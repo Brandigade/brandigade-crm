@@ -96,7 +96,8 @@ jobs:
       - name: Build the site
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://wqdysxpormmxxaakfgtu.supabase.co' }}
-          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          # Public anon key (safe to ship: it is in the published config.js anyway).
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxZHlzeHBvcm1teHhhYWtmZ3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0ODMxNTcsImV4cCI6MjEwNzA1OTE1N30.OAqkIeHV60fHjcMxedzCDQkqzU1JLBUZxBN6YwpGf00' }}
         run: |
           mkdir -p _site
           cp index.html _site/
