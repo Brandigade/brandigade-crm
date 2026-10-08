@@ -558,7 +558,7 @@
           <button type="submit" class="auth-submit" id="auth-submit-btn">Log in</button>
         </form>
         <div class="auth-toggle" id="auth-toggle">Don't have an account yet? <a id="auth-mode-link">Sign up</a></div>
-        <div class="auth-note">The first person to sign up becomes the owner. Everyone after that starts as a viewer until the owner gives them edit access on the Team page.</div>
+        <div class="auth-note">Sign up to create your own workspace. If a teammate invited you, use the link in their invite email instead.</div>
       </div>
 
       <div id="auth-forgot-view" class="hidden">
@@ -1646,10 +1646,13 @@ function setupAuthForm(){
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearAuthError();
+    clearAuthSuccess();
     const email = document.getElementById("auth-email").value.trim();
     const password = document.getElementById("auth-password").value;
     const remember = rememberChk.checked;
+    const idleLabel = submitBtn.textContent;
     submitBtn.disabled = true;
+    submitBtn.textContent = authMode === "signup" ? "Creating your account…" : "Logging in…";
     try{
       if(remember !== getRememberPref() || !sb){
         setRememberPref(remember);
@@ -1658,8 +1661,13 @@ function setupAuthForm(){
         attachAuthStateListener();
       }
       if(authMode === "signup"){
-        const { error } = await sb.auth.signUp({ email, password });
+        const emailRedirectTo = window.location.origin + window.location.pathname;
+        const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo } });
         if(error) throw error;
+        if(!data || !data.session){
+          showAuthSuccess("Almost there. We sent a confirmation link to " + email + ". Open it to finish signing up, then log in here.");
+          modeLink.click();
+        }
       } else {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if(error) throw error;
@@ -1668,6 +1676,7 @@ function setupAuthForm(){
       showAuthError(err.message || "Something went wrong. Please try again.");
     }finally{
       submitBtn.disabled = false;
+      if(submitBtn.textContent.endsWith("…")) submitBtn.textContent = idleLabel;
     }
   });
 

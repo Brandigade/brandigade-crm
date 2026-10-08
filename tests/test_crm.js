@@ -164,5 +164,25 @@ function boot(html,{connected}={}){
  const stored=JSON.parse(w.localStorage.getItem("brandigade-crm-demo-v2"));
  ok(stored&&stored.workspaces.length===4,"demo store persists in the browser");
 
+ // ---------- C. Sign-up that needs email confirmation ----------
+ const signUps=[];
+ const dom3=new JSDOM(raw,{runScripts:"dangerously",pretendToBeVisual:true,url:"https://x.test/crm/",beforeParse(w3){
+   w3.Element.prototype.scrollIntoView=function(){};w3.AudioContext=undefined;
+   w3.BRANDIGADE_CONFIG={supabaseUrl:"https://x.supabase.co",supabaseAnonKey:"anon"};
+   w3.supabase={createClient:()=>{
+     const c=w3.createDemoClient({store:freshStore(),user:{id:"u9",email:"new@x.co"}});
+     c.auth.getSession=async()=>({data:{session:null}});
+     c.auth.signUp=async(a)=>{signUps.push(a);return{data:{user:{id:"u9"},session:null},error:null}};
+     return c;
+   }};
+ }});
+ const d3=dom3.window.document;await sleep(400);
+ d3.getElementById("auth-mode-link").click();
+ d3.getElementById("auth-email").value="new@x.co";d3.getElementById("auth-password").value="secret123";
+ d3.getElementById("auth-form").dispatchEvent(new dom3.window.Event("submit",{cancelable:true}));await sleep(300);
+ ok(signUps.length===1&&signUps[0].options.emailRedirectTo==="https://x.test/crm/","sign-up sends the site address for the confirmation link");
+ ok(d3.getElementById("auth-success").classList.contains("show")&&d3.getElementById("auth-success").textContent.includes("new@x.co"),"sign-up tells the user to check their email");
+ ok(d3.getElementById("auth-submit-btn").textContent==="Log in"&&!d3.getElementById("auth-submit-btn").disabled,"form switches to log in after sign-up");
+
  console.log(fail?`FAILED (${fail})`:"ALL PASS");process.exit(fail?1:0);
 })();
