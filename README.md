@@ -32,7 +32,7 @@ The first person to sign up becomes a platform admin. Sign up first yourself.
 ### 2. GitHub
 1. Repository → Settings → Secrets and variables → Actions.
 2. **Secrets:** `SUPABASE_ACCESS_TOKEN` (the personal token) and `SUPABASE_DB_PASSWORD`.
-3. **Variables:** `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
+3. **Variables:** `SUPABASE_ANON_KEY`. `SUPABASE_PROJECT_REF` and `SUPABASE_URL` default to this project's Supabase project (set them to override).
 4. Settings → Pages → Source: **GitHub Actions**. The app is published at `https://<owner>.github.io/<repo>/`. If you use a custom domain, also add an `APP_URL` variable with that address.
 5. Re-run the latest "Test and deploy" workflow (Actions tab), or push any change.
 
