@@ -1,0 +1,6 @@
+node_modules/
+_site/
+supabase/.temp/
+supabase/.branches/
+.env
+.DS_Store

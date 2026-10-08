@@ -1,0 +1,12 @@
+{
+  "name": "brandigade-crm",
+  "private": true,
+  "description": "Brandigade CRM: multi-workspace CRM on Supabase, deployed from GitHub.",
+  "scripts": {
+    "test": "node tests/test_crm.js",
+    "test:db": "tests/sql/run.sh"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}

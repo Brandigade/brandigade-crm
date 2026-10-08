@@ -1,0 +1,9 @@
+# Supabase CLI settings. The deploy workflow links to your hosted project with
+# SUPABASE_PROJECT_REF, so only the bits the CLI needs locally live here.
+project_id = "brandigade-crm"
+
+[functions.team-admin]
+verify_jwt = true
+
+[functions.send-due-task-emails]
+verify_jwt = true
