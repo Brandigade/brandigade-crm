@@ -62,8 +62,8 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'wqdysxpormmxxaakfgtu' }}
       APP_URL: ${{ vars.APP_URL }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      GMAIL_USER: ${{ vars.GMAIL_USER }}
-      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      GMAIL_USER: ${{ vars.GMAIL_USER || secrets.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD || vars.GMAIL_APP_PASSWORD }}
       REMINDER_FROM_EMAIL: ${{ vars.REMINDER_FROM_EMAIL || 'Brandigade CRM <crm@brandigade.com>' }}
     steps:
       - uses: actions/checkout@v4
