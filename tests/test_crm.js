@@ -99,6 +99,7 @@ function boot(html,{connected,user}={}){
  ok(fnCalls.length===1&&fnCalls[0].u.endsWith("/functions/v1/team-admin")&&fnCalls[0].body.workspaceId===wsId&&fnCalls[0].body.role==="editor","invite calls team-admin for the CRM");
  d.getElementById("ws-currency").value="AED";d.getElementById("ws-currency").dispatchEvent(new w.Event("change"));await sleep(500);
  ok(/AED/.test(txt("d-pipeline-value")),"currency setting");
+ ok(store.workspace_state[0].data.settings.timezone===w.Intl.DateTimeFormat().resolvedOptions().timeZone&&txt("ws-timezone")===store.workspace_state[0].data.settings.timezone,"team time zone saved for reminder emails");
 
  // tasks
  nav("board");

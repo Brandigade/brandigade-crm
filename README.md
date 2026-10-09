@@ -32,9 +32,12 @@ The first person to sign up becomes the admin and owner. Sign up first yourself.
 That's it. The workflow applies the database schema, deploys the edge functions, and publishes the site.
 
 ### 3. Optional: reminder emails
-1. Create a [Resend](https://resend.com) account and verify a sending domain.
-2. `supabase secrets set RESEND_API_KEY=... DUE_TASK_FROM_EMAIL="Brandigade CRM <crm@yourdomain.com>" BOARD_TIMEZONE=Asia/Karachi`
-3. Fill in the two placeholders in `supabase/optional/email_reminders_cron.sql` and run it in the Supabase SQL editor.
+When a task's due time passes, the person it's assigned to (or the owner) gets one email. The schedule that checks every minute is created by a migration; emails start once a sender is set up:
+
+1. Create a Gmail account just for the CRM, turn on 2-Step Verification and make an app password.
+2. In GitHub, add the variable `GMAIL_USER` (that address) and the secret `GMAIL_APP_PASSWORD`, then re-run the deploy.
+
+Or use Resend instead: add the secret `RESEND_API_KEY` (and optionally the variable `REMINDER_FROM_EMAIL`). Due times use the team's time zone, saved in the CRM the first time an editor opens it.
 
 ## How updates reach the cloud
 
@@ -59,7 +62,7 @@ assets/                            logo files (also embedded in index.html)
 supabase/migrations/               database schema and row level security
 supabase/functions/team-admin/     invite and remove team members
 supabase/functions/send-due-task-emails/   optional reminder emails
-supabase/optional/                 the cron job for reminder emails
+supabase/optional/                 the old manual cron script (the schedule is now a migration)
 tests/test_crm.js                  app tests (jsdom)
 tests/sql/                         database and security tests (Postgres)
 .github/workflows/deploy.yml       test and deploy pipeline

@@ -920,7 +920,7 @@
           <option value="AUD">Australian dollar (AUD)</option>
         </select>
       </div>
-      <div class="panel-sub">The owner sets the currency used for deal values.</div>
+      <div class="panel-sub">The owner sets the currency used for deal values. Task reminder emails go out at due times in the <span id="ws-timezone">–</span> time zone.</div>
     </div>
     <div class="table-wrap">
       <table id="team-table">
@@ -1671,6 +1671,11 @@ async function enterWorkspace(wsId){
   closeRecordModal(); closeTaskModal(); closeTaskViewModal();
   await fetchTeam();
   await loadAppStateFromSupabase();
+  // Reminder emails read due times in the team's time zone; the first person to
+  // open the CRM with edit rights records theirs.
+  if(!state.settings.timezone && currentRole !== "viewer"){
+    try{ state.settings.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; saveState(); }catch(e){}
+  }
 
   document.getElementById("auth-screen").classList.add("hidden");
   renderWhoAmI();
@@ -2868,6 +2873,8 @@ function renderTeam(){
   if(invitePanel) invitePanel.classList.toggle("hidden", currentRole !== "owner");
   const cur = document.getElementById("ws-currency");
   if(cur) cur.value = state.settings.currency || "USD";
+  const tzEl = document.getElementById("ws-timezone");
+  if(tzEl) tzEl.textContent = state.settings.timezone || "UTC";
 
   const tbody = document.getElementById("team-tbody");
   if(!tbody) return;

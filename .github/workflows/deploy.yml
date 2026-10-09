@@ -1,9 +1,14 @@
 # Every push to main: run the tests, update the Supabase database and edge
 # functions, then publish the app to GitHub Pages. Pull requests only run tests.
 #
-# Repository secrets:  SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD
-# Repository variables: SUPABASE_PROJECT_REF, SUPABASE_URL, SUPABASE_ANON_KEY,
-#                       APP_URL (optional, defaults to the GitHub Pages address)
+# Repository secrets:  SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD,
+#                      GMAIL_APP_PASSWORD (optional, with variable GMAIL_USER: turns on
+#                      task reminder emails from that Gmail account)
+#                      RESEND_API_KEY (optional, alternative email sender)
+# Repository variables (all optional): SUPABASE_PROJECT_REF, SUPABASE_URL,
+#   SUPABASE_ANON_KEY, APP_URL (defaults to the GitHub Pages address),
+#   GMAIL_USER (the CRM's Gmail address for reminder emails),
+#   REMINDER_FROM_EMAIL (Resend only; defaults to "Brandigade CRM <crm@brandigade.com>")
 name: Test and deploy
 
 on:
@@ -56,6 +61,10 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'wqdysxpormmxxaakfgtu' }}
       APP_URL: ${{ vars.APP_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      GMAIL_USER: ${{ vars.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      REMINDER_FROM_EMAIL: ${{ vars.REMINDER_FROM_EMAIL || 'Brandigade CRM <crm@brandigade.com>' }}
     steps:
       - uses: actions/checkout@v4
       - name: Check Supabase settings
@@ -83,7 +92,16 @@ jobs:
           supabase functions deploy send-due-task-emails --project-ref "$SUPABASE_PROJECT_REF"
           owner="$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           url="${APP_URL:-https://${owner}.github.io/${GITHUB_REPOSITORY#*/}/}"
-          supabase secrets set APP_URL="$url" APP_NAME="Brandigade CRM" --project-ref "$SUPABASE_PROJECT_REF"
+          supabase secrets set APP_URL="$url" APP_NAME="Brandigade CRM" DUE_TASK_FROM_EMAIL="$REMINDER_FROM_EMAIL" --project-ref "$SUPABASE_PROJECT_REF"
+          if [ -n "$RESEND_API_KEY" ]; then
+            supabase secrets set RESEND_API_KEY="$RESEND_API_KEY" --project-ref "$SUPABASE_PROJECT_REF"
+          fi
+          if [ -n "$GMAIL_USER" ] && [ -n "$GMAIL_APP_PASSWORD" ]; then
+            supabase secrets set GMAIL_USER="$GMAIL_USER" GMAIL_APP_PASSWORD="$GMAIL_APP_PASSWORD" --project-ref "$SUPABASE_PROJECT_REF"
+          fi
+          if [ -z "$RESEND_API_KEY" ] && { [ -z "$GMAIL_USER" ] || [ -z "$GMAIL_APP_PASSWORD" ]; }; then
+            echo "::notice::No email sender is set (GMAIL_USER + GMAIL_APP_PASSWORD, or RESEND_API_KEY), so task reminder emails stay off."
+          fi
 
   deploy-site:
     needs: deploy-database
