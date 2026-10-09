@@ -102,6 +102,25 @@ jobs:
           if [ -z "$RESEND_API_KEY" ] && { [ -z "$GMAIL_USER" ] || [ -z "$GMAIL_APP_PASSWORD" ]; }; then
             echo "::notice::No email sender is set (GMAIL_USER + GMAIL_APP_PASSWORD, or RESEND_API_KEY), so task reminder emails stay off."
           fi
+      - name: Check reminder emails
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://wqdysxpormmxxaakfgtu.supabase.co' }}
+          # Public anon key (the same one the website ships).
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxZHlzeHBvcm1teHhhYWtmZ3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0ODMxNTcsImV4cCI6MjEwNzA1OTE1N30.OAqkIeHV60fHjcMxedzCDQkqzU1JLBUZxBN6YwpGf00' }}
+        run: |
+          # Sends nothing: reports whether the sender can log in and the schedule runs.
+          sleep 5
+          out="$(curl -sS -m 60 -X POST "$SUPABASE_URL/functions/v1/send-due-task-emails" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" -d '{"check":true}' || true)"
+          echo "$out"
+          case "$out" in
+            *'"gmailLogin":"failed'*) echo "::warning::Gmail rejected the CRM's login, so reminder emails can't be sent. Check GMAIL_USER and GMAIL_APP_PASSWORD." ;;
+          esac
+          case "$out" in
+            *'"job":[]'*|*'not installed'*) echo "::warning::The every-minute reminder schedule is missing in Supabase." ;;
+          esac
 
   deploy-site:
     needs: deploy-database

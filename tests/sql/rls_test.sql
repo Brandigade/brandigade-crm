@@ -153,4 +153,9 @@ do $$ begin
   assert (select count(*) from public.workspaces) = 1, 'still one CRM';
 end $$;
 
+-- The reminder schedule report works where pg_cron isn't installed.
+do $$ begin
+  assert public.reminder_schedule_status() = '{"cron":"not installed"}'::jsonb, 'schedule status reports no pg_cron';
+end $$;
+
 select 'ALL SQL CHECKS PASSED' as result;

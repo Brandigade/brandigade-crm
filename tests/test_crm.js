@@ -27,13 +27,13 @@ function boot(html,{connected,user}={}){
   const fnCalls=[];let store=null;
   const dom=new JSDOM(html,{runScripts:"dangerously",pretendToBeVisual:true,url:"https://x.test/",beforeParse(w){
     w.Element.prototype.scrollIntoView=function(){};w.AudioContext=undefined;
-    w.fetch=async(u,o)=>{fnCalls.push({u,body:JSON.parse(o.body)});return{ok:true,status:200,json:async()=>({success:true})}};
+    w.fetch=async(u,o)=>{fnCalls.push({u,body:JSON.parse(o.body)});const body=u.endsWith("/send-due-task-emails")?{success:true,sent:0,errors:["Write report: Invalid login"]}:{success:true};return{ok:true,status:200,json:async()=>body}};
     if(connected){
       w.BRANDIGADE_CONFIG={supabaseUrl:"https://x.supabase.co",supabaseAnonKey:"anon"};
       w.supabase={createClient:()=>{
         store=freshStore();
         const c=w.createDemoClient({store,user});
-        delete c.teamAdmin; // force the real edge-function path (captured by fetch)
+        delete c.teamAdmin; delete c.sendReminderEmails; // force the real edge-function paths (captured by fetch)
         c.auth.getSession=async()=>({data:{session:{user,access_token:"t"}}});
         return c;
       }};
@@ -109,6 +109,9 @@ function boot(html,{connected,user}={}){
  d.getElementById("tm-save-btn").click();await sleep(500);
  ok(!d.querySelector("#board .card-title b")&&w.eval("state.board.at(-1).dealId")===deal.id,"task saved, escaped, linked to deal");
  w.eval("checkReminders()");ok(w.eval("notificationHistory.length")>=1,"overdue reminder notifies");
+ await sleep(200);
+ ok(fnCalls.some(c=>c.u.endsWith("/functions/v1/send-due-task-emails")),"in-app reminder asks the server to email it at the same moment");
+ ok(/Reminder email not sent/.test(d.body.textContent)&&/Invalid login/.test(d.body.textContent),"a failed reminder email is shown to the user");
 
  // viewer lockdown
  w.eval('currentRole="viewer"');w.eval("applyRolePermissions()");nav("contacts");

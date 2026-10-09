@@ -1,10 +1,17 @@
-// send-due-task-emails — emails the assignee when a task's due date/time passes.
+// send-due-task-emails — emails the assignee when a task's reminder goes off.
 //
-// Triggered every minute by pg_cron (see supabase/optional/email_reminders_cron.sql).
-// Each task is emailed at most once per (workspace + task id + due date + due time),
-// tracked in sent_task_emails, so changing a due date re-arms the email. Unassigned
-// tasks go to the owner. Tasks that went overdue more than a day ago are skipped, so
-// switching emails on doesn't send a pile of old reminders.
+// The email goes out at the same moment as the in-app reminder: at the task's
+// reminder time (at due time, 15 minutes / 1 hour / 1 day before), and not at all
+// when the reminder is "No reminder". The app calls this function the moment its
+// in-app reminder fires, and pg_cron calls it every minute as a backstop for when
+// nobody has the CRM open (migration 20261009120000_task_reminder_schedule.sql).
+// Each reminder is emailed at most once per (workspace + task id + due date + due
+// time + reminder), tracked in sent_task_emails, so changing any of them re-arms the
+// email. Unassigned tasks go to the owner. Reminders more than a day late are
+// skipped, so switching emails on doesn't send a pile of old reminders.
+//
+// POST {"check":true} sends nothing and reports whether the sender can log in and
+// whether the every-minute schedule is running (the deploy workflow prints this).
 //
 // Sending: through a Gmail account kept just for the CRM (GMAIL_USER + GMAIL_APP_PASSWORD,
 // over SMTP on port 465), or through Resend if RESEND_API_KEY is set. With neither,
@@ -61,6 +68,18 @@ function naiveLocalToUtc(dateStr: string, timeStr: string | undefined, timeZone:
 }
 
 const MAX_LATE_MS = 24 * 60 * 60 * 1000;
+
+// Same offsets as the app's reminder menu.
+const REMINDER_OFFSETS_MS: Record<string, number> = { at_due: 0, "15_min": 15 * 60 * 1000, "1_hour": 60 * 60 * 1000, "1_day": 24 * 60 * 60 * 1000 };
+
+// When the in-app reminder for a task goes off, or null when it has none.
+// Tasks saved before reminders existed have no setting and remind at the due time.
+function reminderTime(t: any, timeZone: string) {
+  if (!t.dueDate) return null;
+  const offset = REMINDER_OFFSETS_MS[t.reminder ?? "at_due"];
+  if (offset === undefined) return null;
+  return new Date(naiveLocalToUtc(t.dueDate, t.dueTime, timeZone).getTime() - offset);
+}
 
 function validTimeZone(tz: unknown) {
   if (typeof tz !== "string" || !tz) return null;
@@ -119,13 +138,33 @@ async function sendGmail(to: string, subject: string, html: string) {
 const canSend = !!RESEND_API_KEY || !!(GMAIL_USER && GMAIL_APP_PASSWORD);
 const sendEmail = RESEND_API_KEY ? sendResendEmail : sendGmail;
 
+// Health check: can the sender log in, and is the every-minute schedule running?
+async function check(admin: any) {
+  const out: Record<string, unknown> = { sender: RESEND_API_KEY ? "resend" : (canSend ? "gmail" : "none") };
+  if (!RESEND_API_KEY && canSend) {
+    try {
+      gmail ??= nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD } });
+      await gmail.verify();
+      out.gmailLogin = "ok (" + GMAIL_USER + ")";
+    } catch (err) {
+      out.gmailLogin = "failed: " + ((err as Error).message || String(err));
+    }
+  }
+  const sched = await admin.rpc("reminder_schedule_status");
+  out.schedule = sched.error ? "unknown: " + sched.error.message : sched.data;
+  return out;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const body = await req.json().catch(() => ({}));
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  if (body && body.check) return json(await check(admin));
 
   if (!canSend) return json({ success: true, skipped: "No email sender is set up" });
 
   try {
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     const wsResp = await admin.from("workspaces").select("id,name,workspace_state(data)").eq("status", "active");
     if (wsResp.error || !wsResp.data) return json({ error: "Could not load workspaces" }, 500);
@@ -139,9 +178,9 @@ Deno.serve(async (req: Request) => {
       const board = Array.isArray(stateRow?.data?.board) ? stateRow.data.board : [];
       const timeZone = validTimeZone(stateRow?.data?.settings?.timezone) || BOARD_TIMEZONE;
       const dueTasks = board.filter((t: any) => {
-        if (!t.dueDate || t.column === "done") return false;
-        const due = naiveLocalToUtc(t.dueDate, t.dueTime, timeZone);
-        return due <= now && now.getTime() - due.getTime() < MAX_LATE_MS;
+        if (t.column === "done") return false;
+        const at = reminderTime(t, timeZone);
+        return !!at && at <= now && now.getTime() - at.getTime() < MAX_LATE_MS;
       });
       if (!dueTasks.length) continue;
       dueCount += dueTasks.length;
@@ -152,13 +191,15 @@ Deno.serve(async (req: Request) => {
       const memberById = new Map(members.map((m) => [m.user_id, m]));
 
       for (const t of dueTasks) {
-        const key = ws.id + "|" + t.id + "|" + t.dueDate + "|" + (t.dueTime || "");
-        const existing = await admin.from("sent_task_emails").select("key").eq("key", key);
-        if (existing.data && existing.data.length) { skipped++; continue; }
-
+        const key = ws.id + "|" + t.id + "|" + t.dueDate + "|" + (t.dueTime || "") + "|" + (t.reminder ?? "at_due");
         const recipient: any = (t.assignedTo ? memberById.get(t.assignedTo) : owner) || owner;
         const to = recipient?.profiles?.email;
         if (!to) { skipped++; continue; }
+
+        // Claim the reminder before sending, so the app and the schedule calling at
+        // the same moment can't both send it. A failed send releases the claim.
+        const claim = await admin.from("sent_task_emails").insert({ key, workspace_id: ws.id, task_id: String(t.id) });
+        if (claim.error) { skipped++; continue; }
 
         const subject = "Task due: " + (t.title || "Untitled task");
         const taskUrl = APP_URL + "/?workspace=" + encodeURIComponent(ws.id) + "&task=" + encodeURIComponent(String(t.id));
@@ -172,9 +213,11 @@ Deno.serve(async (req: Request) => {
           "</div>";
 
         const result: any = await sendEmail(to, subject, html);
-        if (result && result.error) { errors.push(ws.id + "/" + t.id + ": " + JSON.stringify(result.error)); continue; }
-
-        await admin.from("sent_task_emails").insert({ key, workspace_id: ws.id, task_id: String(t.id) });
+        if (result && result.error) {
+          await admin.from("sent_task_emails").delete().eq("key", key);
+          errors.push((t.title || "Untitled task") + ": " + (typeof result.error === "string" ? result.error : JSON.stringify(result.error)));
+          continue;
+        }
         sent++;
       }
     }

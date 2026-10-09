@@ -32,12 +32,12 @@ The first person to sign up becomes the admin and owner. Sign up first yourself.
 That's it. The workflow applies the database schema, deploys the edge functions, and publishes the site.
 
 ### 3. Optional: reminder emails
-When a task's due time passes, the person it's assigned to (or the owner) gets one email. The schedule that checks every minute is created by a migration; emails start once a sender is set up:
+When a task's reminder goes off in the CRM (at the due time, or 15 minutes, 1 hour or 1 day before), the person it's assigned to (or the owner) gets one email at the same moment. Tasks set to "No reminder" get no email. The open CRM asks for the email as soon as its reminder fires, and a schedule created by a migration checks every minute for when nobody has the CRM open. Emails start once a sender is set up:
 
 1. Create a Gmail account just for the CRM, turn on 2-Step Verification and make an app password.
 2. In GitHub, add the variable `GMAIL_USER` (that address) and the secret `GMAIL_APP_PASSWORD`, then re-run the deploy.
 
-Or use Resend instead: add the secret `RESEND_API_KEY` (and optionally the variable `REMINDER_FROM_EMAIL`). Due times use the team's time zone, saved in the CRM the first time an editor opens it.
+Or use Resend instead: add the secret `RESEND_API_KEY` (and optionally the variable `REMINDER_FROM_EMAIL`). Due times use the team's time zone, saved in the CRM the first time an editor opens it. Each deploy ends with a "Check reminder emails" step that shows whether the sender can log in and whether the schedule is running.
 
 ## How updates reach the cloud
 
