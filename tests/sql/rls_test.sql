@@ -8,152 +8,124 @@ begin
   perform set_config('request.jwt.claim.role', case when uid is null then 'anon' else 'authenticated' end, false);
 end $$;
 
--- Users: admin signs up first; alice and bob run their own agencies; carol is invited by alice.
+-- Users: the admin signs up first; carol is invited; mallory signs up without an invite.
 insert into auth.users (id, email, email_confirmed_at) values
   ('00000000-0000-0000-0000-00000000000a', 'admin@brandigade.com', now()),
-  ('00000000-0000-0000-0000-0000000000a1', 'alice@one.co', now()),
-  ('00000000-0000-0000-0000-0000000000b0', 'bob@two.co', now()),
-  ('00000000-0000-0000-0000-0000000000c0', 'carol@one.co', null);
+  ('00000000-0000-0000-0000-0000000000c0', 'carol@brandigade.com', null),
+  ('00000000-0000-0000-0000-0000000000f0', 'mallory@else.co', now());
 
 do $$ begin
   assert (select is_platform_admin from public.profiles where email = 'admin@brandigade.com'), 'first user is platform admin';
-  assert not (select is_platform_admin from public.profiles where email = 'alice@one.co'), 'later users are not platform admin';
+  assert not (select is_platform_admin from public.profiles where email = 'mallory@else.co'), 'later users are not platform admin';
+  assert (select count(*) from public.workspaces) = 1, 'the company CRM is created for the first user';
+  assert (select role from public.workspace_members where user_id = '00000000-0000-0000-0000-00000000000a') = 'owner', 'first user owns the CRM';
+  assert (select count(*) from public.workspace_members) = 1, 'nobody else joins without an invite';
 end $$;
+select id as crm from public.workspaces \gset
 
-set role authenticated;
-
-select pg_temp.act_as('00000000-0000-0000-0000-0000000000a1');
-select public.create_workspace('Alice Agency') as alice_ws \gset
-select pg_temp.act_as('00000000-0000-0000-0000-0000000000b0');
-select public.create_workspace('Bob Studio') as bob_ws \gset
-
--- Invite carol into Alice's workspace (done by the edge function with the service role).
-reset role;
+-- Invite carol (done by the edge function with the service role).
 insert into public.workspace_members (workspace_id, user_id, role, invited)
-  values (:'alice_ws', '00000000-0000-0000-0000-0000000000c0', 'editor', true);
-set role authenticated;
+  values (:'crm', '00000000-0000-0000-0000-0000000000c0', 'editor', true);
 
--- Alice writes CRM data.
-select pg_temp.act_as('00000000-0000-0000-0000-0000000000a1');
-update public.workspace_state set data = '{"contacts":[{"id":"c1"}],"deals":[{"id":"d1","value":5000,"stage":"proposal"}]}' where workspace_id = :'alice_ws';
+-- The admin writes CRM data.
+set role authenticated;
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+update public.workspace_state set data = '{"contacts":[{"id":"c1"}],"deals":[{"id":"d1","value":5000,"stage":"proposal"}]}' where workspace_id = :'crm';
 do $$ begin
-  assert (select count(*) from public.workspaces) = 1, 'alice sees only her workspace';
-  assert (select jsonb_array_length(data->'contacts') from public.workspace_state) = 1, 'alice saved a contact';
-  assert (select count(*) from public.workspace_members) = 2, 'alice sees her 2 members';
+  assert (select jsonb_array_length(data->'contacts') from public.workspace_state) = 1, 'admin saved a contact';
+  assert (select count(*) from public.workspace_members) = 2, 'admin sees the 2 members';
 end $$;
 
--- Bob can't see or touch Alice's data.
-select pg_temp.act_as('00000000-0000-0000-0000-0000000000b0');
-update public.workspace_state set data = '{"hacked":true}' where workspace_id = :'alice_ws';
+-- Mallory (not invited) can't see or touch anything.
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000f0');
+update public.workspace_state set data = '{"hacked":true}' where workspace_id = :'crm';
 do $$ begin
-  assert (select count(*) from public.workspaces) = 1, 'bob sees only his workspace';
-  assert not exists (select 1 from public.workspace_state where data ? 'contacts'), 'bob cannot read alice data';
-  assert (select count(*) from public.profiles) = 1, 'bob sees only himself';
+  assert (select count(*) from public.workspaces) = 0, 'uninvited user sees no CRM';
+  assert (select count(*) from public.workspace_state) = 0, 'uninvited user cannot read data';
+  assert (select count(*) from public.workspace_members) = 0, 'uninvited user sees no team';
+  assert (select count(*) from public.profiles) = 1, 'uninvited user sees only themself';
 end $$;
 reset role;
 do $$ begin
-  assert not exists (select 1 from public.workspace_state where data ? 'hacked'), 'bob update had no effect';
+  assert not exists (select 1 from public.workspace_state where data ? 'hacked'), 'uninvited update had no effect';
 end $$;
-set role authenticated;
 
--- Carol (editor) can write; she can't promote herself or change the plan.
+-- Nobody can start another workspace.
+set role authenticated;
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000f0');
+do $$ begin
+  begin
+    perform public.create_workspace('Mallory Inc');
+    raise exception 'create_workspace still exists';
+  exception when undefined_function then null;
+  end;
+end $$;
+reset role;
+do $$ begin
+  begin
+    insert into public.workspaces (name) values ('Second CRM');
+    raise exception 'a second workspace was allowed';
+  exception when unique_violation then null;
+  end;
+end $$;
+
+-- Carol (editor) can write; she can't promote herself or grant herself admin.
+set role authenticated;
 select pg_temp.act_as('00000000-0000-0000-0000-0000000000c0');
-update public.workspace_state set data = data || '{"note":"carol"}' where workspace_id = :'alice_ws';
+update public.workspace_state set data = data || '{"note":"carol"}' where workspace_id = :'crm';
 update public.workspace_members set role = 'owner' where user_id = '00000000-0000-0000-0000-0000000000c0';
-update public.workspaces set plan_id = 'business' where id = :'alice_ws';
 update public.profiles set is_platform_admin = true where id = '00000000-0000-0000-0000-0000000000c0';
 reset role;
 do $$ begin
   assert exists (select 1 from public.workspace_state where data ? 'note'), 'editor can save';
   assert (select role from public.workspace_members where user_id = '00000000-0000-0000-0000-0000000000c0') = 'editor', 'editor cannot self-promote';
-  assert (select plan_id from public.workspaces where name = 'Alice Agency') = 'free', 'members cannot change plan';
-  assert not (select is_platform_admin from public.profiles where email = 'carol@one.co'), 'cannot self-grant platform admin';
+  assert not (select is_platform_admin from public.profiles where email = 'carol@brandigade.com'), 'cannot self-grant platform admin';
 end $$;
 
--- Owner: change carol to viewer, rename, cannot change own plan, cannot remove self.
+-- Owner: change carol to viewer, cannot remove self.
 set role authenticated;
-select pg_temp.act_as('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 update public.workspace_members set role = 'viewer' where user_id = '00000000-0000-0000-0000-0000000000c0';
-update public.workspaces set name = 'Alice & Co', plan_id = 'business', status = 'active' where id = :'alice_ws';
-delete from public.workspace_members where user_id = '00000000-0000-0000-0000-0000000000a1';
+do $$ begin
+  delete from public.workspace_members where user_id = '00000000-0000-0000-0000-00000000000a';
+exception when others then
+  if sqlerrm not like 'The CRM owner cannot be removed%' then raise; end if;
+end $$;
 reset role;
 do $$ begin
   assert (select role from public.workspace_members where user_id = '00000000-0000-0000-0000-0000000000c0') = 'viewer', 'owner changes roles';
-  assert (select name from public.workspaces where plan_id = 'free' and name like 'Alice%') = 'Alice & Co', 'owner renames, plan unchanged';
-  assert exists (select 1 from public.workspace_members where user_id = '00000000-0000-0000-0000-0000000000a1'), 'owner cannot remove self';
+  assert exists (select 1 from public.workspace_members where user_id = '00000000-0000-0000-0000-00000000000a'), 'owner cannot remove self';
 end $$;
 
 -- Viewer cannot write.
 set role authenticated;
 select pg_temp.act_as('00000000-0000-0000-0000-0000000000c0');
-update public.workspace_state set data = '{}' where workspace_id = :'alice_ws';
+update public.workspace_state set data = '{}' where workspace_id = :'crm';
 reset role;
 do $$ begin
-  assert exists (select 1 from public.workspace_state where data ? 'contacts' and workspace_id = (select id from public.workspaces where name = 'Alice & Co')), 'viewer cannot overwrite';
+  assert exists (select 1 from public.workspace_state where data ? 'contacts'), 'viewer cannot overwrite';
 end $$;
 
 -- Invite accepted clears the invited flag (Supabase Auth does this with no user session).
 select pg_temp.act_as(null);
-update auth.users set email_confirmed_at = now() where email = 'carol@one.co';
+update auth.users set email_confirmed_at = now() where email = 'carol@brandigade.com';
 do $$ begin
   assert not (select invited from public.workspace_members where user_id = '00000000-0000-0000-0000-0000000000c0'), 'confirmed invite clears flag';
 end $$;
 
--- Seat limit (free = 3): alice + carol + one more fits, the 4th fails.
-insert into auth.users (id, email, email_confirmed_at) values
-  ('00000000-0000-0000-0000-0000000000d0', 'dan@one.co', now()), ('00000000-0000-0000-0000-0000000000e0', 'eve@one.co', now());
-insert into public.workspace_members (workspace_id, user_id, role) values (:'alice_ws', '00000000-0000-0000-0000-0000000000d0', 'viewer');
-do $$ begin
-  begin
-    insert into public.workspace_members (workspace_id, user_id, role)
-      select id, '00000000-0000-0000-0000-0000000000e0', 'viewer' from public.workspaces where name = 'Alice & Co';
-    raise exception 'seat limit not enforced';
-  exception when sqlstate 'P0001' then
-    if sqlerrm not like 'Seat limit%' then raise; end if;
-  end;
-end $$;
-
--- Contact limit (free = 250).
-do $$ begin
-  begin
-    update public.workspace_state set data = jsonb_build_object('contacts', (select jsonb_agg(jsonb_build_object('id', g)) from generate_series(1, 251) g))
-      where workspace_id = (select id from public.workspaces where name = 'Alice & Co');
-    raise exception 'contact limit not enforced';
-  exception when sqlstate 'P0001' then
-    if sqlerrm not like 'Contact limit%' then raise; end if;
-  end;
-end $$;
-
--- Platform admin sees everything and can upgrade/suspend.
+-- No limits: many people and many contacts are fine.
+insert into auth.users (id, email, email_confirmed_at)
+  select ('00000000-0000-0000-0000-0000000001' || lpad(g::text, 2, '0'))::uuid, 'p' || g || '@brandigade.com', now() from generate_series(1, 12) g;
+insert into public.workspace_members (workspace_id, user_id, role)
+  select :'crm', ('00000000-0000-0000-0000-0000000001' || lpad(g::text, 2, '0'))::uuid, 'viewer' from generate_series(1, 12) g;
 set role authenticated;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
-do $$ begin
-  assert (select count(*) from public.admin_list_workspaces()) = 2, 'admin lists all workspaces';
-  assert (select open_pipeline from public.admin_list_workspaces() where name = 'Alice & Co') = 5000, 'admin sees open pipeline';
-  assert (select count(*) from public.admin_list_users()) = 6, 'admin lists all users';
-end $$;
-update public.workspaces set plan_id = 'pro', status = 'suspended' where id = :'bob_ws';
+update public.workspace_state set data = jsonb_build_object('contacts', (select jsonb_agg(jsonb_build_object('id', g)) from generate_series(1, 300) g))
+  where workspace_id = :'crm';
 reset role;
 do $$ begin
-  assert (select plan_id || '/' || status from public.workspaces where name = 'Bob Studio') = 'pro/suspended', 'admin changes plan and status';
-end $$;
-
--- Suspended workspace is read-only for its owner; non-admins can't call admin RPCs.
-set role authenticated;
-select pg_temp.act_as('00000000-0000-0000-0000-0000000000b0');
-update public.workspace_state set data = '{"x":1}' where workspace_id = :'bob_ws';
-do $$ begin
-  begin
-    perform public.admin_list_workspaces();
-    raise exception 'admin rpc not protected';
-  exception when others then
-    if sqlerrm not like 'Platform admins only%' then raise; end if;
-  end;
-  assert (select count(*) from public.workspace_state) = 1, 'suspended owner can still read';
-end $$;
-reset role;
-do $$ begin
-  assert not exists (select 1 from public.workspace_state where data ? 'x'), 'suspended workspace is read-only';
+  assert (select count(*) from public.workspace_members) = 14, 'no seat limit';
+  assert (select jsonb_array_length(data->'contacts') from public.workspace_state) = 300, 'no contact limit';
 end $$;
 
 -- Anonymous visitors see nothing.
@@ -167,5 +139,18 @@ do $$ begin
   end;
 end $$;
 reset role;
+
+-- If the only account is deleted, the next person to sign up becomes admin and owner.
+delete from auth.users;
+do $$ begin
+  assert (select count(*) from public.workspaces) = 1, 'the CRM and its data survive';
+  assert (select count(*) from public.workspace_members) = 0, 'no members left';
+end $$;
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000aa', 'new-admin@brandigade.com', now());
+do $$ begin
+  assert (select is_platform_admin from public.profiles where email = 'new-admin@brandigade.com'), 'next first user is admin';
+  assert (select role from public.workspace_members where user_id = '00000000-0000-0000-0000-0000000000aa') = 'owner', 'next first user owns the CRM';
+  assert (select count(*) from public.workspaces) = 1, 'still one CRM';
+end $$;
 
 select 'ALL SQL CHECKS PASSED' as result;

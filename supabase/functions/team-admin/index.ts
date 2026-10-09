@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
     if (!workspace) return json({ error: "Workspace not found" }, 404);
     const isPlatformAdmin = !!callerProfile?.is_platform_admin;
     if (membership?.role !== "owner" && !isPlatformAdmin) {
-      return json({ error: "Only the workspace owner can manage the team" }, 403);
+      return json({ error: "Only the owner can manage the team" }, 403);
     }
     if (workspace.status !== "active" && !isPlatformAdmin) {
       return json({ error: "This workspace is suspended. Contact support to reactivate it." }, 403);
@@ -85,7 +85,7 @@ Deno.serve(async (req: Request) => {
       const { error: memberErr } = await admin.from("workspace_members")
         .insert({ workspace_id: workspaceId, user_id: userId, role, invited: emailed });
       if (memberErr) {
-        if (memberErr.code === "23505") return json({ error: "That person is already in this workspace" }, 400);
+        if (memberErr.code === "23505") return json({ error: "That person is already on the team" }, 400);
         if (emailed) await admin.auth.admin.deleteUser(userId!); // don't leave an orphan login behind
         return json({ error: memberErr.message }, 400);
       }
@@ -99,8 +99,8 @@ Deno.serve(async (req: Request) => {
 
       const { data: target } = await admin.from("workspace_members").select("role,invited")
         .eq("workspace_id", workspaceId).eq("user_id", userId).maybeSingle();
-      if (!target) return json({ error: "That person isn't in this workspace" }, 404);
-      if (target.role === "owner" && !isPlatformAdmin) return json({ error: "The owner can't be removed" }, 400);
+      if (!target) return json({ error: "That person isn't on the team" }, 404);
+      if (target.role === "owner") return json({ error: "The owner can't be removed" }, 400);
 
       const { error } = await admin.from("workspace_members").delete().eq("workspace_id", workspaceId).eq("user_id", userId);
       if (error) return json({ error: error.message }, 400);

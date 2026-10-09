@@ -1,25 +1,18 @@
 # Brandigade CRM
 
-A multi-workspace CRM that Brandigade runs as a SaaS. Each customer signs up, gets their own workspace, and invites their team. You manage every workspace, plan and user from the Admin console. Supabase holds the data and logins; GitHub runs the tests and deploys every change.
+Brandigade's own CRM, shared by the whole team. The admin invites people by email and gives them editor or viewer access. Supabase holds the data and logins; GitHub runs the tests and deploys every change.
 
 ## What's in it
 
-| For customers | |
+| Page | |
 |---|---|
 | **Dashboard** | Open pipeline, weighted forecast, won this month, win rate, deals closing soon, next tasks, recent activity. |
 | **Pipeline** | Drag-and-drop deals: Lead, Qualified, Proposal sent, Negotiation, Won, Lost. |
 | **Contacts / Companies** | Searchable records with deals and a call, email, meeting and note log. |
 | **Tasks** | Kanban with reminders, linked to deals. Optional reminder emails. |
-| **Team** | Owner invites people as editor or viewer, sees plan usage, renames the workspace, sets the currency. |
-| **Workspaces** | Anyone can belong to several workspaces and switch from the sidebar. |
+| **Team** | The owner invites people as editor or viewer, changes roles, removes people and sets the currency. |
 
-| For Brandigade (platform admins) | |
-|---|---|
-| **Admin console** | Every workspace with owner, plan, seats, contacts, deals and last activity. Change plans, suspend or reactivate, open any workspace. Edit plan limits and prices. Grant or remove platform admin. Monthly revenue and total pipeline at the top. |
-
-Plans start as Free (3 seats, 250 contacts), Pro (10 seats, $29) and Business (50 seats, $99). Limits are enforced by the database, not just the app. Billing is manual for now: you change a customer's plan in the Admin console.
-
-The first person to sign up becomes a platform admin. Sign up first yourself.
+The first person to sign up becomes the admin and owner. Sign up first yourself. Anyone else who signs up without an invite can log in but sees nothing until the owner adds them.
 
 ## One-time setup
 
@@ -55,7 +48,7 @@ Pull requests run the tests only. Database changes always go in a **new** migrat
 
 ## Try it without Supabase
 
-Open `index.html` in a browser. With no keys in `config.js`, the login screen offers **Open the demo workspace**: sample customers, deals and workspaces, with you as platform admin. Changes stay in that browser.
+Open `index.html` in a browser. With no keys in `config.js`, the login screen offers **Open the demo**: sample contacts, deals and teammates, with you as owner. Changes stay in that browser.
 
 ## Project layout
 
@@ -63,9 +56,9 @@ Open `index.html` in a browser. With no keys in `config.js`, the login screen of
 index.html                         the whole app (HTML, CSS, JS)
 config.js                          Supabase URL + anon key (written by the deploy workflow)
 assets/                            logo files (also embedded in index.html)
-supabase/migrations/               database schema, row level security, plan limits, admin functions
-supabase/functions/team-admin/     invite and remove workspace members
-supabase/functions/send-due-task-emails/   optional reminder emails for every workspace
+supabase/migrations/               database schema and row level security
+supabase/functions/team-admin/     invite and remove team members
+supabase/functions/send-due-task-emails/   optional reminder emails
 supabase/optional/                 the cron job for reminder emails
 tests/test_crm.js                  app tests (jsdom)
 tests/sql/                         database and security tests (Postgres)
@@ -74,13 +67,12 @@ tests/sql/                         database and security tests (Postgres)
 
 ## Data model
 
-- `plans`: seat and contact limits, monthly price.
-- `workspaces`: one per customer, with `plan_id` and `status` (active or suspended).
-- `workspace_members`: who is in which workspace, as owner, editor or viewer.
-- `profiles`: one per person; `is_platform_admin` marks Brandigade staff.
-- `workspace_state`: each workspace's CRM data as one JSON document (`board`, `companies`, `contacts`, `deals`, `activities`, `settings`).
+- `workspaces`: exactly one row, the Brandigade CRM. It's created for the first person who signs up.
+- `workspace_members`: who has access, as owner, editor or viewer.
+- `profiles`: one per person; `is_platform_admin` marks the first account.
+- `workspace_state`: the CRM data as one JSON document (`board`, `companies`, `contacts`, `deals`, `activities`, `settings`).
 
-Saving rewrites a workspace's document, so two people saving in the same instant means the last save wins. That's fine for small teams; moving contacts and deals into their own tables is the next step if customers grow large.
+Saving rewrites that document, so two people saving in the same instant means the last save wins. That's fine for small teams; moving contacts and deals into their own tables is the next step if the data grows large.
 
 ## Tests
 
