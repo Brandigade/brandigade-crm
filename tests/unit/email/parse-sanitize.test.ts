@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeMimeWords, messageIdList, normalizeMessageId, parseAddressList } from "../../../lib/server/email/addresses.js";
 import { gmailBodies, parseGmailMessage, parseGraphMessage, participants, graphBodies } from "../../../lib/server/email/parse.js";
 import { bound, htmlToText, makeSnippet, sanitizeEmailHtml } from "../../../lib/server/email/sanitize.js";
-import { __clearInternalAddressCache, matchLeads } from "../../../lib/server/email/ingest.js";
+import { __clearInternalAddressCache, matchLeads, teamDomains } from "../../../lib/server/email/ingest.js";
 import { __setEmailRepoForTests } from "../../../lib/server/email/repo.js";
 import { memoryRepo } from "../../fakes/email/memory-repo.js";
 import { afterEach } from "vitest";
@@ -174,6 +174,26 @@ describe("participant matching", () => {
       bcc: [],
     };
     expect(await matchLeads("ws", "eddie@brandigade.com", [m])).toEqual([["c-client"]]);
+    __clearInternalAddressCache();
+  });
+
+  it("treats the team's company domain as internal by default, but never a public webmail domain", async () => {
+    const { repo, db } = memoryRepo();
+    __setEmailRepoForTests({ ...repo, internalAddresses: async () => ({ emails: ["eddie@brandigade.com", "sara@gmail.com"], domains: [] }) });
+    __clearInternalAddressCache();
+    db.contacts.push(
+      { id: "c-legal", workspace_id: "ws", email_normalized: "legal@brandigade.com" },
+      { id: "c-sub", workspace_id: "ws", email_normalized: "ops@eu.brandigade.com" },
+      { id: "c-gmail-lead", workspace_id: "ws", email_normalized: "buyer@gmail.com" },
+    );
+    const m = {
+      from: { email: "eddie@brandigade.com", name: null },
+      to: [{ email: "legal@brandigade.com", name: null }, { email: "ops@eu.brandigade.com", name: null }, { email: "buyer@gmail.com", name: null }],
+      cc: [],
+      bcc: [],
+    };
+    expect(await matchLeads("ws", "eddie@brandigade.com", [m])).toEqual([["c-gmail-lead"]]);
+    expect(teamDomains(["a@brandigade.com", "b@gmail.com", "c@yahoo.co.uk", "d@hotmail.fr"], ["Partner.example"])).toEqual(["partner.example", "brandigade.com"]);
     __clearInternalAddressCache();
   });
 });

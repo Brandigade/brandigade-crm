@@ -45,19 +45,41 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
   return out;
 }
 
+// Free webmail domains: a teammate using one doesn't make everyone there internal.
+const PUBLIC_MAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "ymail.com",
+  "rocketmail.com", "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "pm.me",
+  "gmx.com", "gmx.net", "gmx.de", "web.de", "mail.com", "yandex.com", "yandex.ru", "mail.ru", "zoho.com",
+  "zohomail.com", "fastmail.com", "hey.com", "tutanota.com", "tuta.io", "qq.com", "163.com", "126.com",
+]);
+const PUBLIC_MAIL_FAMILY = /^(yahoo|hotmail|outlook|live|msn|aol|gmx|yandex)\.[a-z.]{2,}$/;
+
+/** The team's company domains: the owner's list plus the domains of members and mailboxes. */
+export function teamDomains(emails: string[], configured: string[]): string[] {
+  const out = new Set(configured.map((d) => d.toLowerCase()));
+  for (const e of emails) {
+    const d = e.trim().toLowerCase().split("@")[1];
+    if (d && d.includes(".") && !PUBLIC_MAIL_DOMAINS.has(d) && !PUBLIC_MAIL_FAMILY.test(d)) out.add(d);
+  }
+  return [...out];
+}
+
 // The team's own addresses are never treated as leads, even if someone
 // creates a lead with one: otherwise a lead "ceo@ourcompany" would pull every
-// teammate's mail with the CEO into the shared CRM. Cached for a minute.
+// teammate's mail with the CEO into the shared CRM. That covers the whole
+// company domain (hr@, legal@, aliases), not only the members' own addresses.
+// Cached for a minute.
 const internalCache = new Map<string, { at: number; isInternal: (email: string) => boolean }>();
 export async function internalAddressFilter(workspaceId: string): Promise<(email: string) => boolean> {
   const hit = internalCache.get(workspaceId);
   if (hit && Date.now() - hit.at < 60_000) return hit.isInternal;
   const r = repo();
-  const { emails, domains } = r.internalAddresses ? await r.internalAddresses(workspaceId) : { emails: [], domains: [] };
+  const { emails, domains: configured } = r.internalAddresses ? await r.internalAddresses(workspaceId) : { emails: [], domains: [] };
   const set = new Set(emails.map((e) => e.toLowerCase()));
+  const domains = teamDomains(emails, configured);
   const isInternal = (email: string) => {
     const e = email.trim().toLowerCase();
-    return set.has(e) || domains.some((d) => e.endsWith("@" + d));
+    return set.has(e) || domains.some((d) => e.endsWith("@" + d) || e.endsWith("." + d));
   };
   internalCache.set(workspaceId, { at: Date.now(), isInternal });
   return isInternal;

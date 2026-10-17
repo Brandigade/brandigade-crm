@@ -138,7 +138,7 @@ function button(href: string, label: string, primary = true): string {
   return `<a href="${escapeHtml(href)}" style="${style}">${escapeHtml(label)}</a>`;
 }
 
-function layout(opts: { eyebrow: string; heading: string; bodyHtml: string; footerReason: string }): string {
+function layout(opts: { eyebrow: string; heading: string; bodyHtml: string; footerReason: string; settingsLink?: boolean }): string {
   const name = escapeHtml(appName());
   return (
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(opts.heading)}</title></head>` +
@@ -149,14 +149,16 @@ function layout(opts: { eyebrow: string; heading: string; bodyHtml: string; foot
     `<h2 style="margin:0 0 14px;font-size:19px;">${escapeHtml(opts.heading)}</h2>` +
     opts.bodyHtml +
     `</div>` +
-    `<p style="color:${MUTED};font-size:12px;margin:14px 4px 0;">${escapeHtml(opts.footerReason)} ` +
-    `<a href="${escapeHtml(links.settings())}" style="color:${ACCENT};">Change your notification settings</a>.</p>` +
+    `<p style="color:${MUTED};font-size:12px;margin:14px 4px 0;">${escapeHtml(opts.footerReason)}` +
+    (opts.settingsLink === false ? "" : ` <a href="${escapeHtml(links.settings())}" style="color:${ACCENT};">Change your notification settings</a>.`) +
+    `</p>` +
     `</div></body></html>`
   );
 }
 
-function textLayout(opts: { heading: string; lines: string[]; footerReason: string }): string {
-  return [opts.heading, "", ...opts.lines, "", "--", `${opts.footerReason} Change your notification settings: ${links.settings()}`].join("\n");
+function textLayout(opts: { heading: string; lines: string[]; footerReason: string; settingsLink?: boolean }): string {
+  const footer = opts.settingsLink === false ? opts.footerReason : `${opts.footerReason} Change your notification settings: ${links.settings()}`;
+  return [opts.heading, "", ...opts.lines, "", "--", footer].join("\n");
 }
 
 function priorityBadge(priority: string | null | undefined): string {
@@ -371,5 +373,29 @@ export function testEmail(opts: { recipientName: string; senderLabel: string; no
       footerReason,
     }),
     text: textLayout({ heading, lines: [...lines, "", `Notification settings: ${links.settings()}`], footerReason }),
+  };
+}
+
+/** The join link for someone who already has a login (see core-routes.ts). */
+export function teamInviteEmail(opts: { inviterName: string | null; role: "editor" | "viewer"; link: string; expiresDays: number }): EmailContent {
+  const who = opts.inviterName || "The CRM owner";
+  const heading = `Join ${appName()}`;
+  const access = opts.role === "editor" ? "an editor (you can add and change leads, deals and tasks)" : "a viewer (read-only)";
+  const lines = [
+    `${who} invited you to ${appName()} as ${access}.`,
+    "This address already has a login. The button below signs you in and adds you to the team, then asks you to choose a new password.",
+    `The link works for ${opts.expiresDays} days. If you weren't expecting this, ignore this email: nothing changes until the link is opened.`,
+  ];
+  const footerReason = `You got this email because someone invited this address to ${appName()}.`;
+  return {
+    subject: `${who} invited you to ${appName()}`,
+    html: layout({
+      eyebrow: "Invite",
+      heading,
+      bodyHtml: lines.map((l) => `<p style="margin:0 0 10px;">${escapeHtml(l)}</p>`).join("") + button(opts.link, "Join the team"),
+      footerReason,
+      settingsLink: false,
+    }),
+    text: textLayout({ heading, lines: [...lines, "", `Join the team: ${opts.link}`], footerReason, settingsLink: false }),
   };
 }

@@ -18,6 +18,18 @@ export interface AuthContext {
 }
 
 /**
+ * Verifies the caller's Supabase access token only: for the few routes a
+ * signed-in person may use before they are on the team (joining it).
+ */
+export async function requireUser(req: Request): Promise<{ user: { id: string; email?: string | null }; token: string }> {
+  const token = bearerToken(req);
+  if (!token) throw unauthorized("Sign in first.");
+  const { data, error } = await adminClient().auth.getUser(token);
+  if (error || !data?.user) throw unauthorized();
+  return { user: data.user, token };
+}
+
+/**
  * Authenticates a request from the CRM front end.
  *
  * The bearer token is verified by Supabase Auth (signature, expiry, revoked
@@ -26,12 +38,8 @@ export interface AuthContext {
  * route that changes data should require owner or editor.
  */
 export async function requireAuth(req: Request, opts: { roles?: Role[] } = {}): Promise<AuthContext> {
-  const token = bearerToken(req);
-  if (!token) throw unauthorized("Sign in first.");
+  const { user, token } = await requireUser(req);
   const admin = adminClient();
-  const { data, error } = await admin.auth.getUser(token);
-  if (error || !data?.user) throw unauthorized();
-  const user = data.user;
 
   const [{ data: membership, error: mErr }, { data: profile }] = await Promise.all([
     admin

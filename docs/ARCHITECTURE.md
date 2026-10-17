@@ -48,7 +48,8 @@ All CRM tables have `workspace_id` (the single Brandigade CRM workspace) and RLS
 | `calls` | One row per call, unique `provider_call_sid` (Twilio parent CallSid); `company_id` for calls to a company's main number. Status moves forward only. Disposition via RPC `set_call_disposition`. Recording: `recording_sid`, `recording_status` (`available` once copied to storage), `recording_storage_path` in bucket `call-recordings` (private). | Server only (+ RPC). `calls_timeline` trigger keeps its activity in step. |
 | `user_preferences` | Per person: `notify_task_assigned`, `notify_task_reminders`, `notify_task_overdue`, `notify_daily_digest`, `digest_hour`, `timezone`, `calls_receive_inbound`. No row = defaults. | Browser (own row) |
 | `job_queue` | Background jobs, idempotent by `dedupe_key`. | Server only |
-| `workspaces.settings` | jsonb: `currency`, `timezone`, `seeded`, and for calling `callRecording` (`"off"`/`"on"`), `recordingAnnouncement` (text), `recordingAccess` (`"owner"`/`"editors"`/`"all"`), `defaultCountry` (ISO, for phone numbers). Owner-only writes. | Browser (owner) |
+| `workspace_invites` | Pending invites for addresses that **already have a login**: `email`, `role`, `token_hash` (sha256 of the emailed token; not readable by any client role), `expires_at` (7 days), `accepted_at`. The owner can list them. See "Invites" below. | Server only |
+| `workspaces.settings` | jsonb: `currency`, `timezone`, `seeded`, and for calling `callRecording` (`"off"`/`"on"`), `recordingAnnouncement` (text), `recordingAccess` (`"owner"`/`"editors"`/`"all"`), `defaultCountry` (ISO, for phone numbers), `allowedCallCountries` (ISO list; empty = the default country, else the country of `TWILIO_CALLER_ID`, never "anywhere"). For email, optional `internalDomains` (the team's domains are added automatically; free webmail domains never are). Owner-only writes. | Browser (owner) |
 
 Database functions you can use:
 * Browser (`sb.rpc`): `get_timeline(p_kind, p_id, p_before, p_before_id, p_limit, p_types)`, `set_call_disposition(p_call, p_disposition, p_notes)`, `update_email_account_settings(p_account, p_sharing, p_sync_enabled)`, `set_email_visibility(p_message, p_visibility)`, `can_play_recording(p_call)`, `ensure_workspace_timezone(p_workspace, p_timezone)`.
@@ -124,6 +125,18 @@ Every notification handler re-checks the task, person and preferences when it ru
 * Every integration screen needs loading, error, empty and "not set up" states, and works on a phone-width screen.
 * The CSP is in `vercel.json` (the dev server applies it too): scripts only from `'self'` and `https://cdn.jsdelivr.net` (pin exact versions), no inline scripts. If you need another origin, say so in your report.
 * Demo mode (`js/demo.js`) has no server: `api()` returns `{ accounts: [] }` for `/email/accounts` and throws `status 501` for anything else. Show a short "not available in the demo" message in that case.
+
+### Invites
+
+* **New address:** `POST /api/team-admin {action:"invite"}` creates the login with Supabase's invite email and a membership marked `invited`; the person sets a password from the link (only the mailbox's owner can open it).
+* **Address that already has a login** (anyone can sign up with any address, so that proves nothing): a `workspace_invites` row and an email with `APP_URL/api/team/join?token=…` (the notification sender; without one, Supabase's sign-in email). `GET /api/team/join` answers with a fresh Supabase sign-in link each time (so mail scanners that open links don't use the invite up) that lands on `/?join=<token>`. There the person chooses a new password and the CRM calls `POST /api/team/join {token, password}`: the server checks the signed-in address is the invited one, claims the invite once, signs out the account's other sessions, sets the chosen password (Supabase then ends every session of the account), and only then adds the membership. The CRM signs in again with the new password. Whoever registered the address beforehand loses access; an access token they already hold keeps working against the database until it expires (Supabase's JWT expiry, 1 hour by default) but can't be refreshed.
+* A never-confirmed sign-up with no membership is deleted and replaced by a normal invite. The owner can cancel pending invites (`action:"cancel_invite"`); expired ones are pruned daily.
+
+### Limits that protect the senders and the phone bill
+
+* Notification emails: at most 20 "task assigned" emails an hour per person, and `NOTIFICATION_MAX_PER_DAY` (default 400) for the whole CRM in 24 hours; over a limit the email is skipped (the task stays in the CRM). Test emails: one a minute, five a day per person.
+* Calls: only numbers stored on CRM records, only ordinary number types in allowed countries, at most 60 an hour and 300 a day per person, 1 hour per call.
+* Deleting a lead or deal deletes the hand-logged notes that belonged only to it, including teammates' private notes on it (they would be unreachable otherwise). Emails, calls and task history stay.
 
 ## 7. Security rules (non-negotiable)
 

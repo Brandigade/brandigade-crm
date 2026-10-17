@@ -352,6 +352,31 @@ do $$ begin
   assert not exists (select 1 from public.activities where subject = 'Note on a lead about to go'), 'a deleted lead takes its own notes with it';
 end $$;
 
+-- Invites for people who already have a login: the owner can list them, nobody
+-- can read the token hashes or write invites or memberships directly.
+insert into public.workspace_invites (workspace_id, email, role, token_hash, invited_by, expires_at)
+  values (:'crm', 'newbie@t.co', 'editor', 'deadbeef', '10000000-0000-0000-0000-000000000001', now() + interval '7 days');
+set role authenticated;
+select pg_temp.act_as('10000000-0000-0000-0000-000000000001');
+do $$ begin
+  assert pg_temp.n('select id, email, role, expires_at, accepted_at from public.workspace_invites') = 1, 'the owner sees pending invites';
+end $$;
+select pg_temp.denied('select token_hash from public.workspace_invites');
+select pg_temp.denied($q$insert into public.workspace_invites (workspace_id, email, role, token_hash, expires_at) values ((select id from public.workspaces limit 1), 'x@y.z', 'editor', 'h', now())$q$);
+select pg_temp.denied($q$update public.workspace_invites set accepted_at = now()$q$);
+select pg_temp.denied('delete from public.workspace_invites');
+select pg_temp.act_as('10000000-0000-0000-0000-000000000002');
+do $$ begin assert pg_temp.n('select id from public.workspace_invites') = 0, 'editors don''t see invites'; end $$;
+select pg_temp.act_as('10000000-0000-0000-0000-000000000004');
+do $$ begin assert pg_temp.n('select id from public.workspace_invites') = 0, 'outsiders don''t see invites'; end $$;
+select pg_temp.denied($q$insert into public.workspace_members (workspace_id, user_id, role) values ((select id from public.workspaces limit 1), auth.uid(), 'editor')$q$);
+reset role;
+set role anon;
+select pg_temp.act_as(null);
+select pg_temp.denied('select id from public.workspace_invites');
+reset role;
+delete from public.workspace_invites;
+
 -- Clean up records for the next file (people stay).
 delete from public.email_accounts; delete from public.calls; delete from public.activities; delete from public.tasks;
 delete from public.deals; delete from public.contacts; delete from public.companies; delete from public.job_queue;

@@ -12,7 +12,12 @@ type Responder = (call: Call) => { data?: unknown; error?: unknown; count?: numb
 
 export function fakeSupabase(
   responders: Record<string, Responder> = {},
-  auth?: { getUser?: (t: string) => any; users?: Record<string, { email_confirmed_at: string | null }> },
+  auth?: {
+    getUser?: (t: string) => any;
+    users?: Record<string, { email_confirmed_at: string | null }>;
+    /** Overrides for the admin auth calls, by name (e.g. "signOut": () => ({ error: ... })). */
+    admin?: Record<string, (...args: any[]) => any>;
+  },
 ) {
   const calls: Call[] = [];
   const respond = (call: Call) => {
@@ -57,6 +62,18 @@ export function fakeSupabase(
         deleteUser: async (id: string) => {
           calls.push({ kind: "auth", name: "deleteUser", args: id, filters: [] });
           return { data: null, error: null };
+        },
+        generateLink: async (params: unknown) => {
+          calls.push({ kind: "auth", name: "generateLink", args: params, filters: [] });
+          return auth?.admin?.generateLink?.(params) ?? { data: { properties: { action_link: "http://sb.test/auth/v1/verify?token=otp" } }, error: null };
+        },
+        updateUserById: async (id: string, attrs: unknown) => {
+          calls.push({ kind: "auth", name: "updateUserById", args: { id, attrs }, filters: [] });
+          return auth?.admin?.updateUserById?.(id, attrs) ?? { data: { user: { id } }, error: null };
+        },
+        signOut: async (jwt: string, scope?: string) => {
+          calls.push({ kind: "auth", name: "signOut", args: { jwt, scope }, filters: [] });
+          return auth?.admin?.signOut?.(jwt, scope) ?? { data: null, error: null };
         },
       },
     },

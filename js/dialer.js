@@ -992,7 +992,7 @@ window.DialerUI = window.DialerUI || {};
         </div>
         <div class="setting-row">
           <div><div class="setting-label"><label for="dialer-allowed">Countries the CRM may call</label></div>
-            <div class="setting-help">Protects against expensive calls to foreign or special numbers. Two-letter country codes separated by commas, e.g. AE, SA, GB. Empty means only the default country.</div></div>
+            <div class="setting-help">Protects against expensive calls to foreign or special numbers. Two-letter country codes separated by commas, e.g. AE, SA, GB. Empty means only the default country (or, without one, the country of the CRM's Twilio number).</div></div>
           <input type="text" id="dialer-allowed" class="input" maxlength="200" style="max-width:220px;" placeholder="Default country only" />
         </div>`;
       host.appendChild(panel);

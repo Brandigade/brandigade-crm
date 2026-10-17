@@ -413,6 +413,12 @@ function setupAuthForm(){
     const pw2 = document.getElementById("reset-password-confirm").value;
     if(pw1 !== pw2){ showAuthError("Those two passwords don't match."); return; }
     resetSubmitBtn.disabled = true;
+    if(pendingJoin){
+      try{ await submitJoin(pw1); }
+      catch(err){ showAuthError(err.message || "Couldn't join the team. Please try again."); }
+      resetSubmitBtn.disabled = false;
+      return;
+    }
     try{
       const { error } = await sb.auth.updateUser({ password: pw1 });
       if(error) throw error;
@@ -464,7 +470,20 @@ async function fetchMyWorkspaces(){
   myWorkspaces = (data || []).filter(m => m.workspaces).map(m => ({ ...m.workspaces, role: m.role }));
 }
 
+// Invites to people who already had a login, until they open the join link.
+let pendingInvites = [];
+async function fetchPendingInvites(){
+  if(DEMO || memberRole !== "owner"){ pendingInvites = []; return; }
+  const { data, error } = await sb.from("workspace_invites")
+    .select("id,email,role,created_at,expires_at")
+    .eq("workspace_id", currentWorkspace.id).is("accepted_at", null).order("created_at", { ascending:true });
+  if(error){ console.error("Could not load pending invites", error); pendingInvites = []; return; }
+  const now = Date.now();
+  pendingInvites = (data || []).filter(i => Date.parse(i.expires_at) > now);
+}
+
 async function fetchTeam(){
+  await fetchPendingInvites();
   const { data, error } = await sb.from("workspace_members")
     .select("user_id,role,invited,created_at,profiles(id,email,display_name,avatar_data)")
     .eq("workspace_id", currentWorkspace.id).order("created_at", { ascending:true });
@@ -637,11 +656,25 @@ async function initAuth(){
   const isInviteLink = window.location.hash.includes("type=invite") || window.location.search.includes("type=invite");
   const isRecoveryLink = window.location.hash.includes("type=recovery") || window.location.search.includes("type=recovery");
   const cameFromRecoveryLink = !DEMO && (isInviteLink || isRecoveryLink);
-  onPasswordSetupScreen = cameFromRecoveryLink;
+  // A join link from an invite email (someone who already had a login).
+  const startParams = new URLSearchParams(window.location.search);
+  const joinToken = DEMO ? null : startParams.get("join");
+  const joinError = DEMO ? null : startParams.get("join_error");
+  onPasswordSetupScreen = cameFromRecoveryLink || !!joinToken;
 
   attachAuthStateListener();
 
   const { data: { session } } = await sb.auth.getSession();
+
+  if(joinToken){ await completeJoin(joinToken, session); return; }
+  if(joinError){
+    history.replaceState(null, "", window.location.pathname);
+    revealAuthForm();
+    showAuthView("login");
+    showAuthError("That invite link has expired, was cancelled or was already used. Ask the CRM owner to invite you again.");
+    if(session) await onLoggedIn(session.user);
+    return;
+  }
 
   if(cameFromRecoveryLink){
     history.replaceState(null, "", window.location.pathname);
@@ -676,6 +709,68 @@ async function initAuth(){
     document.querySelector(".auth-box").classList.remove("is-loading");
     document.getElementById("auth-form-wrap").classList.remove("hidden");
   }
+}
+
+function revealAuthForm(){
+  document.getElementById("auth-loading").classList.add("hidden");
+  document.querySelector(".auth-box").classList.remove("is-loading");
+  document.getElementById("auth-form-wrap").classList.remove("hidden");
+}
+
+// The person opened the join link from an invite email and is now signed in
+// (the link signs them in). They choose a new password on the next screen; the
+// server checks it is the invited address, sets that password (signing out
+// every session of the account, including any held by whoever registered the
+// address before), and adds them to the team. Then we sign in again with it.
+let pendingJoin = null; // { token, email }
+async function completeJoin(token, session){
+  history.replaceState(null, "", window.location.pathname);
+  revealAuthForm();
+  if(!session){
+    onPasswordSetupScreen = false;
+    showAuthView("login");
+    showAuthError("That sign-in link has expired. Open the link in your invite email again to get a new one.");
+    return;
+  }
+  pendingJoin = { token, email: session.user.email };
+  document.getElementById("reset-view-note").textContent = "You've been invited to Brandigade CRM. To join, choose a new password for " + session.user.email + ".";
+  document.getElementById("reset-submit-btn").textContent = "Join the team";
+  ["reset-password", "reset-password-confirm"].forEach(id => document.getElementById(id).setAttribute("minlength", "8"));
+  showAuthView("reset");
+}
+
+// Called by the password form while a join is pending.
+async function submitJoin(password){
+  const join = pendingJoin;
+  try{
+    await api("/team/join", { method:"POST", body:{ token: join.token, password } });
+  }catch(err){
+    if(err.status === 403){
+      onPasswordSetupScreen = false;
+      document.querySelector("#auth-noaccess-view .auth-note").textContent = err.message;
+      showAuthView("noaccess");
+      return;
+    }
+    if(err.code === "invite_expired"){
+      pendingJoin = null;
+      onPasswordSetupScreen = false;
+      showAuthView("login");
+      showAuthError(err.message);
+      const { data: { session } } = await sb.auth.getSession();
+      if(session) await onLoggedIn(session.user);
+      return;
+    }
+    throw err;
+  }
+  pendingJoin = null;
+  const { data, error } = await sb.auth.signInWithPassword({ email: join.email, password });
+  onPasswordSetupScreen = false;
+  if(error || !data.session){
+    showAuthView("login");
+    showAuthError("You've joined the team. Log in with your new password.");
+    return;
+  }
+  await onLoggedIn(data.session.user);
 }
 
 function handleAuthStateChange(event, session){
@@ -1862,7 +1957,35 @@ function renderTeam(){
     }
     tbody.appendChild(tr);
   });
+  if(currentRole !== "owner") return;
+  pendingInvites.forEach(inv => {
+    const tr = document.createElement("tr");
+    const role = inv.role === "editor" ? "editor" : "viewer";
+    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${escapeHtml(inv.email)}</span><span class="pending-pill">Invite sent</span><div class="sub">Joins by opening the link in the email (until ${escapeHtml(fmtDay(inv.expires_at))})</div></td><td><span class="role-pill role-${role}">${role}</span></td><td></td>`;
+    const avatarEl = document.createElement("div");
+    avatarEl.className = "avatar";
+    fillAvatarEl(avatarEl, { email: inv.email });
+    tr.children[0].appendChild(avatarEl);
+    const del = document.createElement("span");
+    del.className = "btn-del";
+    del.textContent = "×";
+    del.title = "Cancel this invite";
+    del.addEventListener("click", guardOwnerOnly(() => cancelInvite(inv)));
+    tr.children[3].appendChild(del);
+    tbody.appendChild(tr);
+  });
 }
+
+const cancelInvite = guardOwnerOnly(async function(inv){
+  if(!await confirmDialog(`Cancel the invite for ${inv.email}? The link in their email will stop working.`, "Cancel invite")) return;
+  try{
+    await callTeamAdminFunction({ action:"cancel_invite", workspaceId: currentWorkspace.id, inviteId: inv.id });
+    pendingInvites = pendingInvites.filter(i => i.id !== inv.id);
+    renderTeam();
+  }catch(err){
+    notify("Couldn't cancel that invite", err.message || "Unknown error");
+  }
+});
 
 let inviteInFlight = false;
 const addInvite = guardOwnerOnly(async function(){
@@ -1883,7 +2006,7 @@ const addInvite = guardOwnerOnly(async function(){
     await fetchTeam();
     renderTeam();
     if(DEMO) notify("Invite sent", email + " (demo: no email is sent)");
-    else if(res && res.emailed === false) notify("Added to the team", email + " already had an account and can log in now.");
+    else if(res && res.pending) notify("Invite sent", email + " already has a login, so they join by opening the link in the email.");
     else notify("Invite sent", email);
   }catch(err){
     notify("Invite not sent", err.message || "Unknown error");

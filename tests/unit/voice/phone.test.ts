@@ -28,8 +28,8 @@ describe("E.164 normalization", () => {
 
 describe("numbers the CRM will dial", () => {
   it("allows valid numbers", () => {
-    expect(dialableNumber("+1 415 555 0143")).toEqual({ ok: true, e164: "+14155550143" });
-    expect(dialableNumber("020 7946 0958", "GB")).toEqual({ ok: true, e164: "+442079460958" });
+    expect(dialableNumber("+1 415 555 0143", undefined, ["US"])).toEqual({ ok: true, e164: "+14155550143" });
+    expect(dialableNumber("020 7946 0958", "GB", ["GB"])).toEqual({ ok: true, e164: "+442079460958" });
   });
   it("refuses invalid and premium-rate numbers", () => {
     expect(dialableNumber("+1 415 555")).toMatchObject({ ok: false });
@@ -97,9 +97,23 @@ describe("toll-fraud rules", () => {
     expect(dialableNumber("+14155550143", undefined, ["US"])).toEqual({ ok: true, e164: "+14155550143" });
     expect(dialableNumber("+442071838750", undefined, ["US"]).ok).toBe(false);
     expect(dialableNumber("+442071838750", undefined, ["US", "GB"]).ok).toBe(true);
-    expect(dialableNumber("+442071838750").ok).toBe(true);
+    // No allowed countries at all means no calls, never "anywhere".
+    expect(dialableNumber("+442071838750").ok).toBe(false);
+  });
+  it("defaults to the country of the CRM's own number when nothing is set", () => {
+    const before = process.env.TWILIO_CALLER_ID;
+    try {
+      process.env.TWILIO_CALLER_ID = "+14155550100";
+      expect(callSettings({}).allowedCallCountries).toEqual(["US"]);
+      expect(callSettings({ defaultCountry: "AE" }).allowedCallCountries).toEqual(["AE"]);
+      delete process.env.TWILIO_CALLER_ID;
+      expect(callSettings({}).allowedCallCountries).toEqual([]);
+    } finally {
+      if (before === undefined) delete process.env.TWILIO_CALLER_ID;
+      else process.env.TWILIO_CALLER_ID = before;
+    }
   });
   it("refuses premium-rate, shared-cost and personal numbers", () => {
-    for (const n of ["+19005550123", "+448449040000", "+447012345678"]) expect(dialableNumber(n).ok).toBe(false);
+    for (const n of ["+19005550123", "+448449040000", "+447012345678"]) expect(dialableNumber(n, undefined, ["US", "GB"]).ok).toBe(false);
   });
 });

@@ -33,3 +33,24 @@ export function userClient(accessToken: string): SupabaseClient {
 export function __setAdminClientForTests(client: SupabaseClient | null) {
   admin = client;
 }
+
+let anon: SupabaseClient | null = null;
+
+/**
+ * A client with only the public anon key and no session, for the few things
+ * Supabase Auth does on behalf of someone who isn't signed in (sending a
+ * sign-in link).
+ */
+export function anonClient(): SupabaseClient {
+  if (!anon) {
+    anon = createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_ANON_KEY"), {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, flowType: "implicit" },
+    });
+  }
+  return anon;
+}
+
+/** For tests: replace the cached anon client. */
+export function __setAnonClientForTests(client: SupabaseClient | null) {
+  anon = client;
+}

@@ -353,3 +353,20 @@ describe("through the real job runner", () => {
     expect(mail.sent).toHaveLength(0);
   });
 });
+
+describe("daily ceiling", () => {
+  it("stops sending notification emails once the CRM reached its daily limit", async () => {
+    process.env.NOTIFICATION_MAX_PER_DAY = "2";
+    const recent = new Date().toISOString();
+    const sent = (id: number) => ({ ...jobRow(KINDS.reminder, {}, { dedupe_key: `old:${id}` }), id: 900 + id, status: "done", finished_at: recent });
+    const { db, mail, handlers, ctx } = setup({ job_queue: [assignedJob(), sent(1), sent(2)] });
+    const out: any = await handlers[KINDS.assigned](db.jobs()[0] as any, ctx);
+    expect(out).toMatchObject({ status: "skipped", result: { reason: expect.stringContaining("daily limit") } });
+    expect(mail.sent).toHaveLength(0);
+
+    process.env.NOTIFICATION_MAX_PER_DAY = "3";
+    const again: any = await handlers[KINDS.assigned](db.jobs()[0] as any, ctx);
+    expect(again.status).toBe("done");
+    expect(mail.sent).toHaveLength(1);
+  });
+});

@@ -52,6 +52,7 @@ describe.skipIf(!available)("voice webhooks against the local Supabase", () => {
   let twilioApi: http.Server;
   let ws: string;
   const people: Record<string, { id: string; token: string; db: SupabaseClient }> = {};
+  let originalSettings: Record<string, unknown> | null = null;
   const created = { contact: "", deal: "", task: "", calls: [] as string[], recordings: [] as string[], storage: [] as string[] };
   const digits = String(100 + Math.floor(Math.random() * 899));
   const leadPhone = `+44 20 7946 0${digits}`; // Ofcom's range for fiction: never a real line
@@ -79,8 +80,12 @@ describe.skipIf(!available)("voice webhooks against the local Supabase", () => {
     await new Promise<void>((r) => twilioApi.listen(0, "127.0.0.1", () => r()));
     process.env.TWILIO_API_BASE = `http://127.0.0.1:${(twilioApi.address() as { port: number }).port}`;
 
-    const { data: w } = await admin.from("workspaces").select("id").limit(1).single();
+    const { data: w } = await admin.from("workspaces").select("id,settings").limit(1).single();
     ws = w!.id;
+    // The lead's number is British and the CRM's number American: allow both.
+    originalSettings = (w!.settings || {}) as Record<string, unknown>;
+    const { error: sErr } = await admin.from("workspaces").update({ settings: { ...originalSettings, allowedCallCountries: ["GB", "US"] } }).eq("id", ws);
+    if (sErr) throw sErr;
     for (const who of ["editor", "viewer"]) {
       const db = createClient(local.SUPABASE_URL, local.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
       const { data, error } = await db.auth.signInWithPassword({ email: users[who].email, password: users[who].password });
@@ -98,6 +103,7 @@ describe.skipIf(!available)("voice webhooks against the local Supabase", () => {
 
   afterAll(async () => {
     try {
+      if (originalSettings) await admin.from("workspaces").update({ settings: originalSettings }).eq("id", ws);
       if (created.storage.length) await admin.storage.from("call-recordings").remove(created.storage);
       if (created.recordings.length) await admin.from("job_queue").delete().in("dedupe_key", created.recordings.map((r) => `voice_recording:${r}`));
       if (created.calls.length) {

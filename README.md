@@ -24,7 +24,9 @@ How it fits together, and the rules for changing it: [docs/ARCHITECTURE.md](docs
 
 Roles: **owner** (everything), **editor** (works with all CRM data), **viewer**
 (read-only). The first person to sign up becomes the owner; anyone else needs
-an invite.
+an invite. Someone whose address already has a login joins from a link emailed
+to that address and chooses a new password then, so nobody can get in by
+registering a teammate's address first.
 
 ## Configuration
 

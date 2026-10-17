@@ -266,7 +266,10 @@ export function supabaseRepo(db: SupabaseClient): EmailRepo {
       for (const a of (check(accounts, "Reading mailboxes") as { email_address: string }[]) || []) emails.add(a.email_address.trim().toLowerCase());
       const settings = ((check(ws, "Reading settings") as { settings?: Record<string, unknown> } | null)?.settings || {}) as Record<string, unknown>;
       const domains = Array.isArray(settings.internalDomains)
-        ? settings.internalDomains.filter((d): d is string => typeof d === "string" && /^[a-z0-9.-]+.[a-z]{2,}$/i.test(d.trim())).map((d) => d.trim().toLowerCase())
+        ? settings.internalDomains
+            .filter((d): d is string => typeof d === "string")
+            .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+            .filter((d) => /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(d))
         : [];
       return { emails: [...emails], domains };
     },

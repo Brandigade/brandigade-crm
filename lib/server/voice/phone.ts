@@ -20,6 +20,11 @@ function parse(raw: unknown, defaultCountry?: CountryCode) {
   }
 }
 
+/** The country a full international number belongs to ("+14155550143" -> "US"). */
+export function countryOf(raw: unknown): CountryCode | undefined {
+  return parse(raw)?.country;
+}
+
 /** A number in E.164 (+14155550143), or null when it can't be a phone number. */
 export function toE164(raw: unknown, defaultCountry?: CountryCode): string | null {
   const pn = parse(raw, defaultCountry);
@@ -35,6 +40,7 @@ const REFUSED_TYPES = new Set(["PREMIUM_RATE", "SHARED_COST", "UAN", "PERSONAL_N
 /**
  * Whether the CRM may place a call to this number. Numbers must be valid for
  * their country, of an ordinary type, and in an allowed country (toll fraud).
+ * No allowed countries means no calls.
  */
 export function dialableNumber(raw: unknown, defaultCountry?: CountryCode, allowedCountries: CountryCode[] = []): { ok: true; e164: string } | { ok: false; reason: string } {
   const pn = parse(raw, defaultCountry);
@@ -43,7 +49,7 @@ export function dialableNumber(raw: unknown, defaultCountry?: CountryCode, allow
   }
   const type = pn.getType();
   if (!type || REFUSED_TYPES.has(type)) return { ok: false, reason: "The CRM doesn't call premium rate, shared cost or special numbers." };
-  if (allowedCountries.length && (!pn.country || !allowedCountries.includes(pn.country))) {
+  if (!pn.country || !allowedCountries.includes(pn.country)) {
     return { ok: false, reason: "Calls to that country aren't allowed. The CRM owner can allow more countries on the Team page." };
   }
   return { ok: true, e164: pn.number };

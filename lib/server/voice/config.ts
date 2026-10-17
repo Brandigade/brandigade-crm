@@ -1,5 +1,5 @@
 import { appUrl, features, getEnv } from "../env.js";
-import { normalizeCountry } from "./phone.js";
+import { countryOf, normalizeCountry } from "./phone.js";
 import type { CountryCode } from "libphonenumber-js/max";
 
 // Calling configuration: which Twilio values are set, the webhook URLs Twilio
@@ -110,16 +110,17 @@ export interface CallSettings {
   announcement: string;
   recordingAccess: "owner" | "editors" | "all";
   defaultCountry: CountryCode | undefined;
-  /** Countries outgoing calls may go to. Empty = no restriction (only when no default country is set). */
+  /** Countries outgoing calls may go to (empty = none; see allowedCountries). */
   allowedCallCountries: CountryCode[];
 }
 
-// settings.allowedCallCountries (ISO codes), defaulting to the default country.
+// settings.allowedCallCountries (ISO codes), defaulting to the default country,
+// then to the country of the CRM's own number. Never "anywhere".
 function allowedCountries(s: Record<string, unknown>): CountryCode[] {
   const list = Array.isArray(s.allowedCallCountries) ? s.allowedCallCountries : [];
   const out = [...new Set(list.map(normalizeCountry).filter((x): x is CountryCode => !!x))];
   if (out.length) return out;
-  const d = normalizeCountry(s.defaultCountry);
+  const d = normalizeCountry(s.defaultCountry) || countryOf(getEnv("TWILIO_CALLER_ID"));
   return d ? [d] : [];
 }
 

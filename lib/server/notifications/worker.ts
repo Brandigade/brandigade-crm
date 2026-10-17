@@ -30,6 +30,7 @@
 // claimed by a second worker.
 import { PermanentJobError, RetryJobLater, enqueueJob, type Job, type JobHandler, type JobOutcome } from "../jobs.js";
 import { adminClient } from "../supabase.js";
+import { getEnv } from "../env.js";
 import {
   KINDS,
   MAX_LATE_MS,
@@ -84,6 +85,26 @@ async function assignmentEmailsLastHour(assigneeId: string): Promise<number> {
 }
 const skip = (reason: string, extra: Record<string, unknown> = {}): Skip => ({ status: "skipped", result: { reason, ...extra } });
 
+// A ceiling for the whole CRM: however many tasks are assigned or due, the
+// server never sends more than this many notification emails in 24 hours, so
+// the sender's daily quota (Gmail allows about 500) can't be used up.
+// NOTIFICATION_MAX_PER_DAY overrides it.
+export const MAX_NOTIFICATION_EMAILS_PER_DAY = 400;
+export function notificationDailyCeiling(): number {
+  const n = Number(getEnv("NOTIFICATION_MAX_PER_DAY"));
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : MAX_NOTIFICATION_EMAILS_PER_DAY;
+}
+async function notificationEmailsLastDay(): Promise<number> {
+  const { count, error } = await adminClient()
+    .from("job_queue")
+    .select("id", { count: "exact", head: true })
+    .like("kind", "notify.%")
+    .eq("status", "done")
+    .gte("finished_at", new Date(Date.now() - 86_400_000).toISOString());
+  if (error) return 0; // counting is a safeguard, not a reason to drop the email
+  return count || 0;
+}
+
 const text = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) : v == null ? "" : String(v).slice(0, max));
 
 /** "eddie@crm.test" -> "ed***@crm.test" (what job results keep). */
@@ -107,6 +128,9 @@ async function deliver(
   content: EmailContent,
   meta: Record<string, unknown>,
 ): Promise<JobOutcome> {
+  if ((await notificationEmailsLastDay()) >= notificationDailyCeiling()) {
+    return skip("The CRM reached its daily limit of notification emails; the task is still in the CRM", { recipient_id: to.user_id, ...meta });
+  }
   const sent = await deps.send(
     { to: to.email!, toName: to.display_name, subject: content.subject, html: content.html, text: content.text, idempotencyKey: job.dedupe_key || `job:${job.id}` },
     cfg,

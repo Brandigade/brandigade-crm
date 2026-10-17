@@ -47,10 +47,11 @@ export async function runTick(opts: { budgetMs?: number; now?: Date } = {}) {
   // Notification emails first, with their own share of the time, so a large
   // import (one backfill job per lead) can never delay reminders.
   result.notificationJobs = await step("notificationJobs", () => runJobs(notificationJobHandlers, { deadline: started + Math.floor(budget * 0.3) }));
-  // Then mailbox backfills and recording copies, a bounded number per tick.
-  result.jobs = await step("jobs", () =>
-    runJobs({ ...emailJobHandlers, ...voiceJobHandlers }, { deadline: started + Math.floor(budget * 0.55), maxJobs: 25 }),
-  );
+  // Call recordings next, also with their own share, so they are copied into
+  // the CRM minutes after a call even while a big import is being backfilled.
+  result.voiceJobs = await step("voiceJobs", () => runJobs(voiceJobHandlers, { deadline: started + Math.floor(budget * 0.4), maxJobs: 25 }));
+  // Then mailbox backfills, a bounded number per tick.
+  result.jobs = await step("jobs", () => runJobs(emailJobHandlers, { deadline: started + Math.floor(budget * 0.6), maxJobs: 25 }));
   // Pull new mail from connected mailboxes.
   result.emailSync = await step("emailSync", () => syncDueEmailAccounts({ deadline }));
   result.reaped = await step("reap", async () => {
@@ -62,7 +63,7 @@ export async function runTick(opts: { budgetMs?: number; now?: Date } = {}) {
   return result;
 }
 
-/** Daily housekeeping (Vercel cron): prune old queue rows and expired OAuth states. */
+/** Daily housekeeping (Vercel cron): prune old queue rows, expired OAuth states and long-expired invites. */
 export async function runDaily() {
   const db = adminClient();
   const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
@@ -80,6 +81,11 @@ export async function runDaily() {
     if (error) throw error;
     return count;
   });
+  const invites = await step("pruneInvites", async () => {
+    const { error, count } = await db.from("workspace_invites").delete({ count: "exact" }).is("accepted_at", null).lt("expires_at", cutoff);
+    if (error) throw error;
+    return count;
+  });
   const tick = await step("tick", () => runTick({ budgetMs: 200_000 }));
-  return { pruned, states, tick };
+  return { pruned, states, invites, tick };
 }
