@@ -1,1 +1,34 @@
-/* Styles for js/notifications.js. Use the colour tokens from css/app.css. */
+/* Styles for js/notifications.js (Profile: Email notifications, Team: Notification emails).
+   Builds on .panel / .feature-panel / .setting-row / .switch / .status-dot (css/app.css, css/timeline.css).
+   Colours only from the tokens in css/app.css. */
+.notif-panel .panel-head{align-items:center;}
+.notif-save-state{font-size:12px;color:var(--muted);min-height:1em;text-align:right;}
+.notif-save-state.is-saved{color:var(--good);}
+.notif-save-state.is-error{color:var(--bad);}
+
+.notif-banner{font-size:12.5px;padding:8px 12px;border-radius:9px;margin:0 0 10px;background:var(--surface-2);color:var(--muted);}
+.notif-banner.is-warn{background:var(--warn-soft);color:var(--warn);}
+
+.notif-select{font-size:13px;padding:6px 9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;max-width:100%;}
+.notif-select:disabled{opacity:0.55;cursor:default;}
+.notif-tz{min-width:220px;max-width:280px;}
+.notif-hour{min-width:120px;}
+
+.notif-test{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
+.notif-test-result{font-size:12.5px;color:var(--muted);}
+.notif-test-result.is-ok{color:var(--good);}
+.notif-test-result.is-bad{color:var(--bad);}
+.notif-note{font-size:12.5px;color:var(--muted);}
+
+.notif-status-line{font-size:13px;margin-top:3px;}
+.notif-status-line code, .notif-panel .setting-help code{font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:5px;}
+.notif-muted{color:var(--muted);font-size:12px;}
+.notif-fails{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.notif-fail{border:1px solid var(--line);border-left:3px solid var(--bad);border-radius:8px;padding:8px 10px;font-size:13px;}
+.notif-fail .tl-pill{margin-right:6px;}
+.notif-fail-err{color:var(--bad);margin:3px 0 2px;word-break:break-word;font-size:12.5px;}
+
+@media (max-width:600px){
+  .notif-select-row .notif-select{min-width:0;width:100%;max-width:none;}
+  .notif-panel .panel-head{flex-wrap:wrap;}
+}
