@@ -375,7 +375,6 @@ function createDemoClient(opts){
     if(path === "/config") return { features: { gmail:false, outlook:false, calling:false, notifications:false }, demo:true };
     if(path === "/team-admin") return teamAdmin(o.body || {});
     if(path === "/email/accounts") return { accounts: [] };
-    if(path === "/notifications/preferences") return { preferences: null };
     throw Object.assign(new Error("This needs the CRM server. It isn't available in the demo."), { status:501, code:"demo" });
   }
   async function teamAdmin(payload){

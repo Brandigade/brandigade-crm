@@ -58,6 +58,13 @@ Jobs the database queues itself:
 * `notify.task_assigned` — payload `{ task_id, assignee_id, assigned_by, assignment_version }`, dedupe `task_assigned:<task>:<version>`. Not queued for self-assignment or done tasks.
 * `email.backfill_contact` — payload `{ contact_id, email }`, dedupe `email_backfill:<contact>:<email>`, when a lead gets a new email address and any mailbox is connected.
 
+Jobs the server queues (notification scheduler, every tick):
+* `notify.task_reminder` — dedupe `task_reminder:<task>:<due_date>:<HH:MM or empty>:<reminder>` (the old reminder emails' rule: at the reminder time, at most 24 h late, assignee or else the owner).
+* `notify.task_overdue` — dedupe `task_overdue:<task>:<due_date>:<HH:MM or empty>` (1 h after the due time; date-only tasks the next day at the person's digest hour).
+* `notify.daily_digest` — dedupe `digest:<user>:<local yyyy-mm-dd>`.
+* `notify.test_email` — dedupe `test_email:<user>:<UTC yyyy-mm-ddThh:mm>` (the "send me a test email" rate limit).
+Every notification handler re-checks the task, person and preferences when it runs and ends "skipped" when the email no longer applies. A send receipt is stored in the job result, so a re-run never sends again.
+
 ## 4. Server conventions (`lib/server`)
 
 * A route module exports `Route[]` (`{ method, path, handler }`, paths like `/api/email/accounts/:id/sync`). Handlers take `(req: Request, ctx: { url, params })` and return a `Response`. Throw `HttpError` (`badRequest`, `forbidden`, `notConfigured`, ...); the router turns errors into `{ error, code }` JSON without leaking internals.
@@ -67,7 +74,8 @@ Jobs the database queues itself:
 * Read bodies with `readJson` / `readForm` (size-limited). Validate everything; clip strings with `str(v, max)`.
 * Provider HTTP calls go through `fetchWithRetry` + `expectJson` (`lib/server/retry.ts`): timeouts, retries on 429/5xx with backoff, `Retry-After` honoured; a long rate limit throws `RateLimitError` so the caller can reschedule.
 * Secrets: only via `lib/server/env.ts`. `features.*()` tells whether an integration is configured; when it isn't, routes answer `503 not_configured` and the UI shows a "not set up yet" state — never a fake success.
-* For tests, provider base URLs must be overridable by environment variables (e.g. `GMAIL_API_BASE`, `GRAPH_API_BASE`, `GOOGLE_OAUTH_BASE`, `MICROSOFT_LOGIN_BASE`, `TWILIO_API_BASE`), defaulting to the real ones.
+* For tests, provider base URLs must be overridable by environment variables (e.g. `GMAIL_API_BASE`, `GRAPH_API_BASE`, `GOOGLE_OAUTH_BASE`, `MICROSOFT_LOGIN_BASE`, `TWILIO_API_BASE`, `RESEND_API_BASE`, `GMAIL_SMTP_HOST`/`GMAIL_SMTP_PORT`), defaulting to the real ones.
+* Exception to "editors for anything that sends": `POST /api/notifications/test` is open to every member, because it only ever emails the caller and is limited to one a minute.
 * Background work: register job handlers (`Record<kind, JobHandler>`) and let `runJobs` claim them. Handlers must be idempotent (a job can run twice after a crash). Throw `PermanentJobError` to stop retrying, `RetryJobLater(ms)` to reschedule.
 * Logs: `console.error`/`console.warn` with context, never tokens, email bodies or full addresses lists.
 
@@ -106,14 +114,14 @@ Jobs the database queues itself:
 | `activity:logged` | `(activity)` after a manual log | — |
 | `escape` | Escape pressed (close your dialogs) | — |
 
-* Module globals used by the timeline: `window.EmailUI = { openComposer({ to, contactId, replyTo }), openViewer(activity) }`, `window.DialerUI = { call({ contactId, taskId, number }), playRecording(callId, container), openDisposition(callId) }`.
+* Module globals: `window.EmailUI = { openComposer({ to, contactId, replyTo }), openViewer(activity) }`, `window.DialerUI = { call({ contactId, taskId, number }), playRecording(callId, container), openDisposition(callId) }` (both used by the timeline), `window.NotificationsUI = { teamDueInstant(date, time, tz?), reloadPreferences(), refreshStatus() }` (the in-app reminders use `teamDueInstant` so they ring at the same moment as the reminder email).
 * Escape every piece of user or provider text with `escapeHtml()` before `innerHTML`. Untrusted email HTML is only shown inside a sandboxed `<iframe sandbox srcdoc>` (no `allow-scripts`, no `allow-same-origin`).
 * No `alert()`/`confirm()`: `notify()` and `await confirmDialog()`.
 * Controls viewers may use need `data-always-enabled="true"`; call `applyRolePermissions()` after drawing controls.
 * Colours only from the CSS tokens in `css/app.css` (`--surface`, `--ink`, `--muted`, `--line`, `--accent`, `--good`, `--warn`, `--bad`, ...). Reusable bits in `css/timeline.css`: `.feature-panel`, `.setting-row`, `.switch`, `.status-dot.ok|warn|bad`, `.btn-sm`, `.btn-icon`, `.tl-pill`.
 * Every integration screen needs loading, error, empty and "not set up" states, and works on a phone-width screen.
 * The CSP is in `vercel.json` (the dev server applies it too): scripts only from `'self'` and `https://cdn.jsdelivr.net` (pin exact versions), no inline scripts. If you need another origin, say so in your report.
-* Demo mode (`js/demo.js`) has no server: `api()` returns `{ accounts: [] }` for `/email/accounts`, `{ preferences: null }` for `/notifications/preferences` and throws `status 501` for anything else. Show a short "not available in the demo" message in that case.
+* Demo mode (`js/demo.js`) has no server: `api()` returns `{ accounts: [] }` for `/email/accounts` and throws `status 501` for anything else. Show a short "not available in the demo" message in that case.
 
 ## 7. Security rules (non-negotiable)
 

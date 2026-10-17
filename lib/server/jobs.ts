@@ -15,6 +15,8 @@ export interface Job<P = any> {
   attempts: number;
   max_attempts: number;
   run_after: string;
+  /** What a previous attempt recorded (e.g. a send receipt), if anything. */
+  result?: unknown;
 }
 
 export interface JobContext {
@@ -64,6 +66,20 @@ export function backoffMs(attempts: number): number {
   return Math.min(60 * 60 * 1000, 30_000 * 2 ** Math.max(0, attempts - 1));
 }
 
+/**
+ * Records a job's outcome. Retried a few times: if a "done" update were lost,
+ * the lease would expire and the job would run again.
+ */
+async function setJobStatus(id: number, fields: Record<string, unknown>) {
+  const db = adminClient();
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error } = await db.from("job_queue").update(fields).eq("id", id);
+    if (!error) return;
+    console.error(`Couldn't record job #${id} as ${String(fields.status)} (attempt ${attempt}):`, error.message);
+    await new Promise((r) => setTimeout(r, 250 * attempt));
+  }
+}
+
 export interface RunJobsSummary {
   claimed: number;
   done: number;
@@ -98,10 +114,13 @@ export async function runJobs(
       try {
         const outcome = await handler(job, { deadline: opts.deadline });
         const status = outcome && outcome.status === "skipped" ? "skipped" : "done";
-        await db
-          .from("job_queue")
-          .update({ status, result: outcome && "result" in outcome ? outcome.result ?? null : null, finished_at: new Date().toISOString(), locked_until: null, last_error: null })
-          .eq("id", job.id);
+        await setJobStatus(job.id, {
+          status,
+          result: outcome && "result" in outcome ? outcome.result ?? null : null,
+          finished_at: new Date().toISOString(),
+          locked_until: null,
+          last_error: null,
+        });
         summary[status]++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -109,18 +128,12 @@ export async function runJobs(
         const exhausted = job.attempts >= job.max_attempts;
         if (permanent || exhausted) {
           console.error(`Job ${job.kind} #${job.id} failed permanently:`, message);
-          await db
-            .from("job_queue")
-            .update({ status: "dead", last_error: message.slice(0, 2000), finished_at: new Date().toISOString(), locked_until: null })
-            .eq("id", job.id);
+          await setJobStatus(job.id, { status: "dead", last_error: message.slice(0, 2000), finished_at: new Date().toISOString(), locked_until: null });
           summary.dead++;
         } else {
           const delay = err instanceof RetryJobLater ? err.delayMs : backoffMs(job.attempts);
           console.warn(`Job ${job.kind} #${job.id} will retry in ${Math.round(delay / 1000)}s:`, message);
-          await db
-            .from("job_queue")
-            .update({ status: "retry", last_error: message.slice(0, 2000), run_after: new Date(Date.now() + delay).toISOString(), locked_until: null })
-            .eq("id", job.id);
+          await setJobStatus(job.id, { status: "retry", last_error: message.slice(0, 2000), run_after: new Date(Date.now() + delay).toISOString(), locked_until: null });
           summary.retried++;
         }
       }

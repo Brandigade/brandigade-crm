@@ -1624,7 +1624,9 @@ function computeReminderTriggerTime(t){
   if(!t.dueDate || !t.reminder || t.reminder === "none") return null;
   const offset = REMINDER_OFFSETS_MS[t.reminder];
   if(offset === null || offset === undefined) return null;
-  const due = new Date(t.dueDate + "T" + (t.dueTime || "00:00"));
+  // Same moment as the reminder email: due times are in the team's time zone.
+  const due = (window.NotificationsUI && NotificationsUI.teamDueInstant && NotificationsUI.teamDueInstant(t.dueDate, t.dueTime))
+    || new Date(t.dueDate + "T" + (t.dueTime || "00:00"));
   return new Date(due.getTime() - offset);
 }
 
@@ -1655,7 +1657,7 @@ function checkReminders(){
     fired.add(key);
     changed = true;
     if(now - trigger > MAX_REMINDER_LATE_MS) return; // long past: don't ring for it
-    const due = new Date(t.dueDate + "T" + (t.dueTime || "00:00"));
+    const due = new Date(trigger.getTime() + REMINDER_OFFSETS_MS[t.reminder]);
     const timeStr = t.dueTime ? due.toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" }) : "";
     const bodyText = "Due " + due.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + (timeStr ? " · " + timeStr : "");
     showToast(t.title, bodyText, t.priority);

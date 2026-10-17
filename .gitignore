@@ -13,3 +13,4 @@ playwright-report/
 tests/e2e/.auth/
 coverage/
 *.log
+.claude/worktrees/
