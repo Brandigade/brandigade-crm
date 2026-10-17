@@ -22,7 +22,7 @@ changing anything; when you change a convention, change this file too.
 
 | Area | Owner | Files |
 |---|---|---|
-| Schema, RLS, timeline triggers, core data layer, timeline UI, core screens, server core | **Integrator** | `supabase/migrations/**`, `js/app.js`, `js/data.js`, `js/demo.js`, `js/timeline.js`, `css/app.css`, `css/timeline.css`, `index.html`, `lib/server/*.ts` (top level), `api/**`, `vercel.json`, `package.json` |
+| Schema, RLS, timeline triggers, core data layer, timeline UI, core screens, system status, server core | **Integrator** | `supabase/migrations/**`, `js/app.js`, `js/data.js`, `js/demo.js`, `js/timeline.js`, `js/system.js`, `css/app.css`, `css/timeline.css`, `index.html`, `lib/server/*.ts` (top level), `api/**`, `vercel.json`, `package.json` |
 | Email (Gmail + Outlook) | **Email session** | `lib/server/email/**`, `js/email.js`, `css/email.css`, `tests/unit/email/**` |
 | Task notifications | **Notifications session** | `lib/server/notifications/**`, `js/notifications.js`, `css/notifications.css`, `tests/unit/notifications/**` |
 | Calling (Twilio) | **Dialer session** | `lib/server/voice/**`, `js/dialer.js`, `css/dialer.css`, `tests/unit/voice/**`, `scripts/setup-twilio.ts` |
