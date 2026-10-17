@@ -1,1 +1,71 @@
-/* Styles for js/email.js. Use the colour tokens from css/app.css. */
+/* Styles for js/email.js. Colours come from the tokens in css/app.css; the
+   building blocks (.feature-panel, .setting-row, .switch, .status-dot,
+   .btn-sm, .btn-icon) are in css/timeline.css. */
+
+/* ---------- Profile: Email accounts ---------- */
+.email-panel .email-intro{margin:0 0 12px;max-width:70ch;line-height:1.5;}
+.email-accounts{display:flex;flex-direction:column;gap:12px;}
+.email-accounts:empty{display:none;}
+.email-account{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface);}
+.email-account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.email-account-id{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;}
+.email-account-address{font-weight:600;font-size:14px;word-break:break-all;}
+.email-account-name{font-size:12.5px;color:var(--muted);}
+.email-provider{font-size:10.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);}
+.email-account-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.email-account-status{font-size:12.5px;color:var(--muted);margin-top:6px;}
+.email-account-error{font-size:12.5px;color:var(--bad);background:var(--bad-soft);border-radius:8px;padding:6px 10px;margin-top:8px;word-break:break-word;}
+.email-account-settings{margin-top:6px;border-top:1px solid var(--line);}
+.email-connect{margin-top:14px;}
+.email-connect-buttons{display:flex;gap:10px;flex-wrap:wrap;}
+.email-note{font-size:12px;color:var(--muted);margin-top:8px;max-width:70ch;line-height:1.5;}
+.email-state{font-size:13px;color:var(--muted);padding:8px 0;line-height:1.5;}
+.email-state-setup{background:var(--warn-soft);color:var(--ink);border-radius:10px;padding:10px 12px;}
+.email-state-error{color:var(--bad);}
+
+.email-spinner{
+  display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border-radius:50%;
+  border:2px solid currentColor;border-right-color:transparent;animation:email-spin .7s linear infinite;
+}
+@keyframes email-spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion: reduce){ .email-spinner{animation:none;border-right-color:currentColor;opacity:0.6;} }
+
+/* ---------- Composer ---------- */
+.email-composer{max-width:640px;}
+.email-composer .tm-field textarea{min-height:200px;font-family:var(--font-body);line-height:1.5;}
+.email-blocked{background:var(--surface-2);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.5;}
+.email-blocked .panel-link{font-size:13px;margin-left:4px;}
+.email-reply-note{font-size:12px;color:var(--muted);margin:-6px 0 10px;word-break:break-word;}
+.email-form-error{color:var(--bad);background:var(--bad-soft);border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:6px;word-break:break-word;}
+.email-form-error .panel-link{font-size:13px;margin-left:4px;}
+.email-foot-spacer{flex:1;}
+.email-mailto{text-decoration:none;}
+.email-action{text-decoration:none;}
+
+/* ---------- Viewer ---------- */
+.email-viewer{max-width:860px;}
+.email-viewer-state{font-size:13.5px;color:var(--muted);padding:6px 0;line-height:1.5;}
+.email-headers{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0 0 10px;font-size:13px;}
+.email-headers dt{color:var(--muted);font-weight:600;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding-top:2px;}
+.email-headers dd{margin:0;word-break:break-word;}
+.email-addr{color:var(--muted);}
+.email-flags{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.email-flag{font-size:12px;color:var(--muted);}
+.email-images-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);background:var(--surface-2);border-radius:10px;padding:8px 10px;margin-bottom:8px;}
+/* Email HTML is written for a white page, so the frame is always "paper". */
+.email-frame{
+  --email-paper:#FFFFFF;
+  display:block;width:100%;height:56vh;min-height:260px;border:1px solid var(--line);border-radius:10px;background:var(--email-paper);
+}
+.email-text{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;max-height:56vh;overflow:auto;}
+.email-visibility{margin-top:10px;}
+.email-viewer-source{font-size:12px;color:var(--muted);}
+
+@media (max-width:600px){
+  .email-account-head{flex-direction:column;}
+  .email-account-actions{width:100%;}
+  .email-frame{height:50vh;}
+  .email-viewer .task-modal-foot{flex-wrap:wrap;}
+  .email-viewer-source{width:100%;}
+  .email-composer .task-modal-foot{flex-wrap:wrap;}
+}
