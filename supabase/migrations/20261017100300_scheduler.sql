@@ -77,7 +77,7 @@ begin
     out := out || jsonb_build_object('lastRuns', v);
   end if;
   if to_regclass('vault.decrypted_secrets') is not null then
-    execute $q$select count(*) = 2 from vault.decrypted_secrets where name in ('crm_app_url', 'crm_cron_secret')$q$ into v;
+    execute $q$select to_jsonb(count(*) = 2) from vault.decrypted_secrets where name in ('crm_app_url', 'crm_cron_secret')$q$ into v;
     out := out || jsonb_build_object('configured', v);
   end if;
   return out;
