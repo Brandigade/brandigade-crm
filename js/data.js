@@ -93,6 +93,7 @@ const DATA_TABLES = [
       occurred_at: isoOrNull(a.at) || new Date().toISOString(), contact_id: nz(a.contactId), company_id: nz(a.companyId),
       deal_id: nz(a.dealId), visibility: a.visibility === "private" ? "private" : "team",
       owner_user_id: a.visibility === "private" ? (a.ownerUserId || (currentUser && currentUser.id)) : null,
+      meta: a.meta && typeof a.meta === "object" && !Array.isArray(a.meta) ? a.meta : {},
     }),
     fromRow: r => ({
       id: r.id, type: r.type, source: r.source || "manual", event: r.event || null, subject: r.subject || "",

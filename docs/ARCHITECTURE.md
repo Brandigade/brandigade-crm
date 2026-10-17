@@ -45,7 +45,7 @@ All CRM tables have `workspace_id` (the single Brandigade CRM workspace) and RLS
 | `oauth_states` | One row per OAuth attempt: `state_hash` (sha256 of the state value), encrypted PKCE verifier, expiry. | Server only |
 | `email_messages` | Stored **only if it involves a lead** (`matched_contact_ids` not empty). One row per mailbox copy: unique `(account_id, provider_message_id)`. Addresses are lowercased; `to_addresses`/`cc_addresses`/`bcc_addresses` are `[{ "email": "...", "name": "..." }]`. `body_html` must be sanitized before storing. | Server only. The `email_messages_timeline` trigger turns rows into timeline activities (deduplicated across mailboxes by `internet_message_id`; private copies → private activity). |
 | `email_sends` | Every compose/reply request, unique `(user_id, client_request_id)` → a retried request can't send twice. | Server only |
-| `calls` | One row per call, unique `provider_call_sid` (Twilio parent CallSid). Status moves forward only. Disposition via RPC `set_call_disposition`. Recording: `recording_sid`, `recording_status` (`available` once copied to storage), `recording_storage_path` in bucket `call-recordings` (private). | Server only (+ RPC). `calls_timeline` trigger keeps its activity in step. |
+| `calls` | One row per call, unique `provider_call_sid` (Twilio parent CallSid); `company_id` for calls to a company's main number. Status moves forward only. Disposition via RPC `set_call_disposition`. Recording: `recording_sid`, `recording_status` (`available` once copied to storage), `recording_storage_path` in bucket `call-recordings` (private). | Server only (+ RPC). `calls_timeline` trigger keeps its activity in step. |
 | `user_preferences` | Per person: `notify_task_assigned`, `notify_task_reminders`, `notify_task_overdue`, `notify_daily_digest`, `digest_hour`, `timezone`, `calls_receive_inbound`. No row = defaults. | Browser (own row) |
 | `job_queue` | Background jobs, idempotent by `dedupe_key`. | Server only |
 | `workspaces.settings` | jsonb: `currency`, `timezone`, `seeded`, and for calling `callRecording` (`"off"`/`"on"`), `recordingAnnouncement` (text), `recordingAccess` (`"owner"`/`"editors"`/`"all"`), `defaultCountry` (ISO, for phone numbers). Owner-only writes. | Browser (owner) |
@@ -62,6 +62,7 @@ Jobs the server queues (notification scheduler, every tick):
 * `notify.task_reminder` — dedupe `task_reminder:<task>:<due_date>:<HH:MM or empty>:<reminder>` (the old reminder emails' rule: at the reminder time, at most 24 h late, assignee or else the owner).
 * `notify.task_overdue` — dedupe `task_overdue:<task>:<due_date>:<HH:MM or empty>` (1 h after the due time; date-only tasks the next day at the person's digest hour).
 * `notify.daily_digest` — dedupe `digest:<user>:<local yyyy-mm-dd>`.
+* `voice.copy_recording` — dedupe `voice_recording:<RecordingSid>`: copies a finished Twilio recording into the private `call-recordings` bucket.
 * `notify.test_email` — dedupe `test_email:<user>:<UTC yyyy-mm-ddThh:mm>` (the "send me a test email" rate limit).
 Every notification handler re-checks the task, person and preferences when it runs and ends "skipped" when the email no longer applies. A send receipt is stored in the job result, so a re-run never sends again.
 
@@ -75,6 +76,7 @@ Every notification handler re-checks the task, person and preferences when it ru
 * Provider HTTP calls go through `fetchWithRetry` + `expectJson` (`lib/server/retry.ts`): timeouts, retries on 429/5xx with backoff, `Retry-After` honoured; a long rate limit throws `RateLimitError` so the caller can reschedule.
 * Secrets: only via `lib/server/env.ts`. `features.*()` tells whether an integration is configured; when it isn't, routes answer `503 not_configured` and the UI shows a "not set up yet" state — never a fake success.
 * For tests, provider base URLs must be overridable by environment variables (e.g. `GMAIL_API_BASE`, `GRAPH_API_BASE`, `GOOGLE_OAUTH_BASE`, `MICROSOFT_LOGIN_BASE`, `TWILIO_API_BASE`, `RESEND_API_BASE`, `GMAIL_SMTP_HOST`/`GMAIL_SMTP_PORT`), defaulting to the real ones.
+* `GET /api/voice/setup` (owner) lists which calling settings are missing (names only). `TWILIO_API_BASE` exists for tests only.
 * Exception to "editors for anything that sends": `POST /api/notifications/test` is open to every member, because it only ever emails the caller and is limited to one a minute.
 * Background work: register job handlers (`Record<kind, JobHandler>`) and let `runJobs` claim them. Handlers must be idempotent (a job can run twice after a crash). Throw `PermanentJobError` to stop retrying, `RetryJobLater(ms)` to reschedule.
 * Logs: `console.error`/`console.warn` with context, never tokens, email bodies or full addresses lists.
@@ -114,7 +116,7 @@ Every notification handler re-checks the task, person and preferences when it ru
 | `activity:logged` | `(activity)` after a manual log | — |
 | `escape` | Escape pressed (close your dialogs) | — |
 
-* Module globals: `window.EmailUI = { openComposer({ to, contactId, replyTo }), openViewer(activity) }`, `window.DialerUI = { call({ contactId, taskId, number }), playRecording(callId, container), openDisposition(callId) }` (both used by the timeline), `window.NotificationsUI = { teamDueInstant(date, time, tz?), reloadPreferences(), refreshStatus() }` (the in-app reminders use `teamDueInstant` so they ring at the same moment as the reminder email).
+* Module globals: `window.EmailUI = { openComposer({ to, contactId, replyTo }), openViewer(activity) }`, `window.DialerUI = { call({ contactId, companyId, dealId, taskId, number }), playRecording(callId, container), openDisposition(callId) }` (both used by the timeline), `window.NotificationsUI = { teamDueInstant(date, time, tz?), reloadPreferences(), refreshStatus() }` (the in-app reminders use `teamDueInstant` so they ring at the same moment as the reminder email).
 * Escape every piece of user or provider text with `escapeHtml()` before `innerHTML`. Untrusted email HTML is only shown inside a sandboxed `<iframe sandbox srcdoc>` (no `allow-scripts`, no `allow-same-origin`).
 * No `alert()`/`confirm()`: `notify()` and `await confirmDialog()`.
 * Controls viewers may use need `data-always-enabled="true"`; call `applyRolePermissions()` after drawing controls.

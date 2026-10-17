@@ -219,6 +219,12 @@ do $$ declare a public.activities; begin
      and a.body = 'Wants a quote', 'duration, outcome, notes and recording';
   assert (select event = 'voicemail' and subject = 'Voicemail' and contact_id is null from public.activities where call_id = '70000000-0000-0000-0000-0000000000a2'), 'unknown caller voicemail logged';
 end $$;
+-- A call to a company's main number shows on that company's timeline.
+insert into public.calls (id, workspace_id, provider_call_sid, direction, status, user_id, company_id) values
+  ('70000000-0000-0000-0000-0000000000a3', :'crm', 'CA102', 'outbound', 'completed', '10000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-0000000000c1');
+do $$ begin
+  assert (select company_id from public.activities where call_id = '70000000-0000-0000-0000-0000000000a3') = '50000000-0000-0000-0000-0000000000c1', 'company call on the company timeline';
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Reading the timeline: kinds, filters and pages

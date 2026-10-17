@@ -78,6 +78,8 @@ async function setupStatus(req: Request): Promise<Response> {
 // ---------------------------------------------------------------------------
 interface Target {
   contactId: string | null;
+  /** The company whose number is called (or the contact's company). */
+  companyId: string | null;
   taskId: string | null;
   dealId: string | null;
   toNumber: string;
@@ -111,11 +113,13 @@ async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<
   const contactId = contactParam || task?.contact_id || deal?.contact_id || null;
   const numbers: string[] = [];
   let resolvedContact: string | null = null;
+  let resolvedCompany: string | null;
   if (contactId) {
     const { data: c, error } = await db.from("contacts").select("id, phone, company_id").eq("id", contactId).eq("workspace_id", workspaceId).maybeSingle();
     if (error) throw error;
     if (!c) return { error: MESSAGES.unknownRecord };
     resolvedContact = c.id as string;
+    resolvedCompany = (c.company_id as string | null) ?? null;
     if (c.phone) numbers.push(c.phone as string);
     if (c.company_id) {
       const { data: co, error: coErr } = await db.from("companies").select("phone").eq("id", c.company_id).eq("workspace_id", workspaceId).maybeSingle();
@@ -126,6 +130,7 @@ async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<
     const { data: co, error } = await db.from("companies").select("id, phone").eq("id", companyParam).eq("workspace_id", workspaceId).maybeSingle();
     if (error) throw error;
     if (!co) return { error: MESSAGES.unknownRecord };
+    resolvedCompany = co.id as string;
     if (co.phone) numbers.push(co.phone as string);
   } else {
     return { error: MESSAGES.unknownRecord };
@@ -140,7 +145,7 @@ async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<
     const d = dialableNumber(n, country);
     if (d.ok) {
       if (d.e164 === toE164(getEnv("TWILIO_CALLER_ID"))) return { error: MESSAGES.ownNumber };
-      return { contactId: resolvedContact, taskId: task?.id ?? null, dealId: deal?.id ?? null, toNumber: d.e164 };
+      return { contactId: resolvedContact, companyId: resolvedCompany, taskId: task?.id ?? null, dealId: deal?.id ?? null, toNumber: d.e164 };
     }
     lastReason = d.reason;
   }
@@ -183,6 +188,7 @@ async function outbound(req: Request): Promise<Response> {
       to_number: target.toNumber,
       user_id: userId,
       contact_id: target.contactId,
+      company_id: target.companyId,
       task_id: target.taskId,
       deal_id: target.dealId,
       recording_enabled: settings.recording,
