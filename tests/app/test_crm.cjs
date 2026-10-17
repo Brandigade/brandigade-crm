@@ -208,6 +208,36 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
   const isU = (v) => /^[0-9a-f-]{36}$/.test(v);
   ok(isU(legacy.companies[0].id) && legacy.contacts[0].companyId === legacy.companies[0].id && legacy.deals[0].contactId === legacy.contacts[0].id && legacy.board[0].dealId === legacy.deals[0].id && legacy.activities[0].contactId === legacy.contacts[0].id, "legacy backups get UUIDs with every link kept");
 
+  // ---------- B2. Every kind of timeline entry, including hostile content ----------
+  {
+    const evil = "<img src=x onerror=window.__pwned=1>";
+    const at = (ms) => new Date(Date.now() - ms).toISOString();
+    const rows = [
+      { workspace_id: "ws1", type: "email", source: "email", event: "inbound", subject: "Re: quote " + evil, body: "Snippet " + evil, contact_id: ct.id, occurred_at: at(1000), meta: { from: "rana@globex.co", from_name: evil, to: [{ email: "me@x.co" }], has_attachments: true } },
+      { workspace_id: "ws1", type: "email", source: "email", event: "outbound", subject: "Proposal", contact_id: ct.id, actor_id: "u1", occurred_at: at(2000), visibility: "private", owner_user_id: "u1", meta: { from: "me@x.co", to: [{ email: "rana@globex.co", name: "Rana" }] } },
+      { workspace_id: "ws1", type: "call", source: "call", event: "outbound", subject: "Outgoing call", body: "Wants a quote", contact_id: ct.id, actor_id: "u1", occurred_at: at(3000), meta: { status: "completed", duration_seconds: 125, disposition: "connected", to: "+15550002", recording_available: true } },
+      { workspace_id: "ws1", type: "call", source: "call", event: "voicemail", subject: "Voicemail", contact_id: ct.id, occurred_at: at(4000), meta: { status: "completed", is_voicemail: true, from: "+15550009", direction: "inbound" } },
+      { workspace_id: "ws1", type: "task", source: "task", event: "assigned", subject: "Follow up", contact_id: ct.id, actor_id: "u1", occurred_at: at(5000), meta: { assigned_to: "u1", status: "todo" } },
+      { workspace_id: "ws1", type: "task", source: "task", event: "rescheduled", subject: "Follow up", contact_id: ct.id, occurred_at: at(6000), meta: { due_date: "2026-11-02", due_time: "09:30:00" } },
+    ];
+    w.__rows = rows;
+    w.eval('sb.from("activities").insert(window.__rows).then(() => {})');
+    await sleep(300);
+    w.eval('openRecordModal("contact", ' + JSON.stringify(ct.id) + ")"); await sleep(500);
+    const items = [...d.querySelectorAll("#rm-timeline .tl-item")].map((e) => e.textContent.replace(/\s+/g, " "));
+    ok(!d.querySelector("#rm-timeline img") && !w.__pwned && items.some((t) => t.includes("Re: quote <img")), "email content from outside is shown as text, never as HTML");
+    ok(items.some((t) => t.includes("Email received from") && t.includes("Attachment")), "incoming email entry with attachment marker");
+    ok(items.some((t) => t.includes("Proposal") && t.includes("Email sent to Rana") && t.includes("Private")), "outgoing private email entry");
+    ok(items.some((t) => t.includes("Outgoing call") && t.includes("2m 05s") && t.includes("Connected") && t.includes("Recorded") && t.includes("Wants a quote")), "call entry with duration, outcome, recording and notes");
+    ok(items.some((t) => t.includes("Voicemail") && t.includes("+15550009")), "voicemail entry");
+    ok(items.some((t) => t.includes("Task assigned to me@x.co: Follow up")), "task reassignment entry names the new assignee");
+    ok(items.some((t) => t.includes("Task due") && t.includes("09:30: Follow up")), "task reschedule entry");
+    [...d.querySelectorAll(".tl-chip")].find((b) => b.textContent === "Calls").click(); await sleep(300);
+    const shown = [...d.querySelectorAll("#rm-timeline .tl-item")];
+    ok(shown.length === 4 && shown.every((e) => e.querySelector(".tl-icon.t-call")), "the Calls filter shows only calls, logged and dialled (" + shown.length + ")");
+    d.getElementById("rm-close").click();
+  }
+
   // ---------- C. Demo mode ----------
   ({ w, d } = boot(raw, {}));
   await sleep(300);
