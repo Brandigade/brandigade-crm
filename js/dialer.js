@@ -989,12 +989,22 @@ window.DialerUI = window.DialerUI || {};
           <div><div class="setting-label"><label for="dialer-country">Default country for phone numbers</label></div>
             <div class="setting-help">Used for numbers saved without a country code, like (415) 555-0143, and to recognise who is calling.</div></div>
           <select id="dialer-country"></select>
+        </div>
+        <div class="setting-row">
+          <div><div class="setting-label"><label for="dialer-allowed">Countries the CRM may call</label></div>
+            <div class="setting-help">Protects against expensive calls to foreign or special numbers. Two-letter country codes separated by commas, e.g. AE, SA, GB. Empty means only the default country.</div></div>
+          <input type="text" id="dialer-allowed" class="input" maxlength="200" style="max-width:220px;" placeholder="Default country only" />
         </div>`;
       host.appendChild(panel);
       panel.querySelector("#dialer-rec-switch").addEventListener("change", (e) => setRecording(e.target.checked, e.target));
       panel.querySelector("#dialer-rec-announcement").addEventListener("change", (e) => saveCallSetting("recordingAnnouncement", e.target.value.replace(/\s+/g, " ").trim().slice(0, 300) || undefined));
       panel.querySelector("#dialer-rec-access").addEventListener("change", (e) => saveCallSetting("recordingAccess", e.target.value));
       panel.querySelector("#dialer-country").addEventListener("change", (e) => saveCallSetting("defaultCountry", e.target.value || undefined));
+      panel.querySelector("#dialer-allowed").addEventListener("change", (e) => {
+        const codes = [...new Set(e.target.value.toUpperCase().split(/[^A-Z]+/).filter(c => /^[A-Z]{2}$/.test(c)))];
+        e.target.value = codes.join(", ");
+        saveCallSetting("allowedCallCountries", codes.length ? codes : undefined);
+      });
       loadSetup();
     }
     updateTeamPanel();
@@ -1018,6 +1028,8 @@ window.DialerUI = window.DialerUI || {};
     const list = COUNTRIES.some(([c]) => c === cur) ? COUNTRIES : COUNTRIES.concat([[cur, cur]]);
     if(country.options.length !== list.length) country.innerHTML = list.map(([c, l]) => `<option value="${escapeHtml(c)}">${escapeHtml(l)}</option>`).join("");
     country.value = cur;
+    const allowed = panel.querySelector("#dialer-allowed");
+    if(document.activeElement !== allowed) allowed.value = Array.isArray(s.allowedCallCountries) ? s.allowedCallCountries.join(", ") : "";
 
     const setup = panel.querySelector('[data-role="setup"]');
     let html;

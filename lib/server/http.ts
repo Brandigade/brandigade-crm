@@ -40,16 +40,29 @@ export function redirect(location: string, status = 302): Response {
   return new Response(null, { status, headers: { Location: location, ...SECURITY_HEADERS } });
 }
 
+/** What to log about an error: never the whole object (it may carry request data). */
+export function errorSummary(err: unknown): string {
+  if (err instanceof Error) {
+    const frames = err.stack ? err.stack.split("\n").slice(1, 6).join("\n") : "";
+    return `${err.name}: ${err.message}${frames ? "\n" + frames : ""}`;
+  }
+  if (err && typeof err === "object") {
+    const e = err as { code?: unknown; message?: unknown };
+    return `${String(e.code ?? "error")}: ${String(e.message ?? "")}`.slice(0, 500);
+  }
+  return String(err).slice(0, 500);
+}
+
 /** Turns any thrown value into a JSON error response without leaking internals. */
 export function errorResponse(err: unknown): Response {
   if (err instanceof HttpError) {
     return json({ error: err.message, code: err.code }, err.status);
   }
   if (err && typeof err === "object" && (err as { name?: string }).name === "ConfigError") {
-    console.error(err);
+    console.error(errorSummary(err));
     return json({ error: "The server is missing some configuration.", code: "not_configured" }, 503);
   }
-  console.error("Unhandled error", err);
+  console.error("Unhandled error", errorSummary(err));
   return json({ error: "Something went wrong on the server. Please try again.", code: "server_error" }, 500);
 }
 

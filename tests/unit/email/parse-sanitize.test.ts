@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeMimeWords, messageIdList, normalizeMessageId, parseAddressList } from "../../../lib/server/email/addresses.js";
 import { gmailBodies, parseGmailMessage, parseGraphMessage, participants, graphBodies } from "../../../lib/server/email/parse.js";
 import { bound, htmlToText, makeSnippet, sanitizeEmailHtml } from "../../../lib/server/email/sanitize.js";
-import { matchLeads } from "../../../lib/server/email/ingest.js";
+import { __clearInternalAddressCache, matchLeads } from "../../../lib/server/email/ingest.js";
 import { __setEmailRepoForTests } from "../../../lib/server/email/repo.js";
 import { memoryRepo } from "../../fakes/email/memory-repo.js";
 import { afterEach } from "vitest";
@@ -152,6 +152,29 @@ describe("participant matching", () => {
     const m = { from: { email: "MAYA@Cedar.Example", name: null }, to: [{ email: "eddie@brandigade.com", name: null }], cc: [{ email: "sam@north.example", name: null }], bcc: [] };
     expect(participants(m, ["Eddie@Brandigade.com"])).toEqual(["maya@cedar.example", "sam@north.example"]);
     expect(await matchLeads("ws", "EDDIE@brandigade.com", [m, { from: null, to: [], cc: [], bcc: [] }])).toEqual([["c-dup", "c-maya"], []]);
+  });
+
+  it("never treats a teammate's address or an internal domain as a lead, even if a lead was created with one", async () => {
+    const { repo, db } = memoryRepo();
+    __setEmailRepoForTests({
+      ...repo,
+      internalAddresses: async () => ({ emails: ["ceo@brandigade.com", "sara@gmail.com"], domains: ["brandigade.com"] }),
+    });
+    __clearInternalAddressCache();
+    db.contacts.push(
+      { id: "c-ceo", workspace_id: "ws", email_normalized: "ceo@brandigade.com" },
+      { id: "c-hr", workspace_id: "ws", email_normalized: "hr@brandigade.com" },
+      { id: "c-sara", workspace_id: "ws", email_normalized: "sara@gmail.com" },
+      { id: "c-client", workspace_id: "ws", email_normalized: "buyer@client.example" },
+    );
+    const m = {
+      from: { email: "ceo@brandigade.com", name: null },
+      to: [{ email: "eddie@brandigade.com", name: null }, { email: "hr@brandigade.com", name: null }, { email: "sara@gmail.com", name: null }],
+      cc: [{ email: "buyer@client.example", name: null }],
+      bcc: [],
+    };
+    expect(await matchLeads("ws", "eddie@brandigade.com", [m])).toEqual([["c-client"]]);
+    __clearInternalAddressCache();
   });
 });
 

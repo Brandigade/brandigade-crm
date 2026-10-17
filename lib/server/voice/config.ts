@@ -55,7 +55,10 @@ export const RECORDINGS_BUCKET = "call-recordings";
 export const INBOUND_RING_SECONDS = 25;
 export const VOICEMAIL_MAX_SECONDS = 120;
 /** Longest call Twilio will keep up (stops a forgotten call from running for hours). */
-export const MAX_CALL_SECONDS = 4 * 60 * 60;
+export const MAX_CALL_SECONDS = 60 * 60;
+/** Per person: limits how much a compromised or careless account can dial. */
+export const MAX_CALLS_PER_HOUR = 60;
+export const MAX_CALLS_PER_DAY = 300;
 
 export const voiceUrls = () => {
   const base = appUrl();
@@ -107,6 +110,17 @@ export interface CallSettings {
   announcement: string;
   recordingAccess: "owner" | "editors" | "all";
   defaultCountry: CountryCode | undefined;
+  /** Countries outgoing calls may go to. Empty = no restriction (only when no default country is set). */
+  allowedCallCountries: CountryCode[];
+}
+
+// settings.allowedCallCountries (ISO codes), defaulting to the default country.
+function allowedCountries(s: Record<string, unknown>): CountryCode[] {
+  const list = Array.isArray(s.allowedCallCountries) ? s.allowedCallCountries : [];
+  const out = [...new Set(list.map(normalizeCountry).filter((x): x is CountryCode => !!x))];
+  if (out.length) return out;
+  const d = normalizeCountry(s.defaultCountry);
+  return d ? [d] : [];
 }
 
 export function callSettings(settings: unknown): CallSettings {
@@ -118,5 +132,6 @@ export function callSettings(settings: unknown): CallSettings {
     announcement: (text || DEFAULT_ANNOUNCEMENT).slice(0, MAX_ANNOUNCEMENT_CHARS),
     recordingAccess: access,
     defaultCountry: normalizeCountry(s.defaultCountry),
+    allowedCallCountries: allowedCountries(s),
   };
 }

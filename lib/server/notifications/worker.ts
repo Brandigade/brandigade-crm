@@ -67,6 +67,21 @@ export interface NotificationDeps {
 }
 
 type Skip = { status: "skipped"; result: Record<string, unknown> };
+
+// Nobody gets flooded: after this many "task assigned" emails in an hour,
+// further ones are skipped (the tasks still show in the CRM and the digest).
+export const MAX_ASSIGNMENT_EMAILS_PER_HOUR = 20;
+async function assignmentEmailsLastHour(assigneeId: string): Promise<number> {
+  const { count, error } = await adminClient()
+    .from("job_queue")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "notify.task_assigned")
+    .eq("status", "done")
+    .eq("payload->>assignee_id", assigneeId)
+    .gte("finished_at", new Date(Date.now() - 3_600_000).toISOString());
+  if (error) return 0; // counting is a safeguard, not a reason to drop the email
+  return count || 0;
+}
 const skip = (reason: string, extra: Record<string, unknown> = {}): Skip => ({ status: "skipped", result: { reason, ...extra } });
 
 const text = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) : v == null ? "" : String(v).slice(0, max));
@@ -189,6 +204,9 @@ export function createNotificationJobHandlers(overrides: NotificationDeps = {}):
     if (!ctx || !to) return skip("The assignee is no longer on the team", { task_id: taskId, recipient_id: assigneeId });
     if (!prefsOf(ctx, assigneeId).notify_task_assigned) return skip("The assignee switched off task assigned emails", { task_id: taskId, recipient_id: assigneeId });
     if (!to.email) return skip("The assignee has no email address", { task_id: taskId, recipient_id: assigneeId });
+    if (await assignmentEmailsLastHour(assigneeId) >= MAX_ASSIGNMENT_EMAILS_PER_HOUR) {
+      return skip("Too many task assigned emails to this person in the last hour; the task is in their task list and digest", { task_id: taskId, recipient_id: assigneeId });
+    }
 
     const content = taskAssignedEmail(emailContext(details, ctx, to, false, await personLabel(ctx, assignedBy), deps.now()));
     return deliver(job, deps, start.cfg, to, content, { task_id: taskId, assignment_version: version });

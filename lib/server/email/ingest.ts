@@ -45,9 +45,31 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
   return out;
 }
 
+// The team's own addresses are never treated as leads, even if someone
+// creates a lead with one: otherwise a lead "ceo@ourcompany" would pull every
+// teammate's mail with the CEO into the shared CRM. Cached for a minute.
+const internalCache = new Map<string, { at: number; isInternal: (email: string) => boolean }>();
+export async function internalAddressFilter(workspaceId: string): Promise<(email: string) => boolean> {
+  const hit = internalCache.get(workspaceId);
+  if (hit && Date.now() - hit.at < 60_000) return hit.isInternal;
+  const r = repo();
+  const { emails, domains } = r.internalAddresses ? await r.internalAddresses(workspaceId) : { emails: [], domains: [] };
+  const set = new Set(emails.map((e) => e.toLowerCase()));
+  const isInternal = (email: string) => {
+    const e = email.trim().toLowerCase();
+    return set.has(e) || domains.some((d) => e.endsWith("@" + d));
+  };
+  internalCache.set(workspaceId, { at: Date.now(), isInternal });
+  return isInternal;
+}
+export function __clearInternalAddressCache() {
+  internalCache.clear();
+}
+
 /** For each message, the ids of the leads it involves (sorted, unique). */
 export async function matchLeads(workspaceId: string, ownAddress: string, msgs: Pick<ParsedMessage, "from" | "to" | "cc" | "bcc">[]): Promise<string[][]> {
-  const perMsg = msgs.map((m) => participants(m, [ownAddress]));
+  const isInternal = await internalAddressFilter(workspaceId);
+  const perMsg = msgs.map((m) => participants(m, [ownAddress]).filter((e) => !isInternal(e)));
   const all = [...new Set(perMsg.flat())];
   if (!all.length) return msgs.map(() => []);
   const contacts = await repo().contactsByEmails(workspaceId, all);

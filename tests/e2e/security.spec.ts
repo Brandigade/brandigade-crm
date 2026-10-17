@@ -83,7 +83,9 @@ test.describe("roles and security", () => {
     const res = await request.get("/");
     const h = res.headers();
     expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
-    expect(h["content-security-policy"]).toContain("script-src 'self' https://cdn.jsdelivr.net");
+    expect(h["content-security-policy"]).toContain("script-src 'self' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/");
+    // Only the two pinned packages, never the whole CDN.
+    expect(h["content-security-policy"]).not.toMatch(/script-src[^;]*https:\/\/cdn\.jsdelivr\.net[ ;]/);
     expect(h["x-frame-options"]).toBe("DENY");
     expect(h["x-content-type-options"]).toBe("nosniff");
     const cfg = await (await request.get("/config.js")).text();

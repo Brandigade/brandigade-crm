@@ -10,7 +10,10 @@ export interface Call {
 
 type Responder = (call: Call) => { data?: unknown; error?: unknown; count?: number } | undefined;
 
-export function fakeSupabase(responders: Record<string, Responder> = {}, auth?: { getUser?: (t: string) => any }) {
+export function fakeSupabase(
+  responders: Record<string, Responder> = {},
+  auth?: { getUser?: (t: string) => any; users?: Record<string, { email_confirmed_at: string | null }> },
+) {
   const calls: Call[] = [];
   const respond = (call: Call) => {
     calls.push(call);
@@ -45,6 +48,11 @@ export function fakeSupabase(responders: Record<string, Responder> = {}, auth?: 
         inviteUserByEmail: async (email: string, opts: unknown) => {
           calls.push({ kind: "auth", name: "invite", args: { email, opts }, filters: [] });
           return { data: { user: { id: "new-user" } }, error: null };
+        },
+        getUserById: async (id: string) => {
+          calls.push({ kind: "auth", name: "getUserById", args: id, filters: [] });
+          const u = auth?.users?.[id];
+          return { data: { user: u ? { id, ...u } : null }, error: u ? null : { message: "not found" } };
         },
         deleteUser: async (id: string) => {
           calls.push({ kind: "auth", name: "deleteUser", args: id, filters: [] });

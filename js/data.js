@@ -386,6 +386,18 @@ function scheduleRemoteRender(coll){
   }, 60);
 }
 
+// Drops records from the screen without asking the database to delete them
+// (for rows the database removes itself, e.g. a deleted lead's notes).
+function forgetLocalRecords(coll, predicate){
+  const t = DATA_TABLE_BY_COLL[coll];
+  const snap = snapFor(t);
+  state[coll] = state[coll].filter(rec => {
+    if(!predicate(rec)) return true;
+    snap.delete(rec.id);
+    return false;
+  });
+}
+
 /* ---------- Imports ---------- */
 // Backups made before records had UUIDs use ids like "c1". Give such records
 // fresh ids and repoint every reference to them.

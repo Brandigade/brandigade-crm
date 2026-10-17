@@ -3,7 +3,7 @@ import { PermanentJobError, RetryJobLater, type Job, type JobContext, type JobOu
 import { ProviderError, RateLimitError } from "../retry.js";
 import { isValidAddress } from "./addresses.js";
 import { LIMITS, providerConfigured, providerLabel } from "./config.js";
-import { newStats, type IngestStats } from "./ingest.js";
+import { newStats, type IngestStats, internalAddressFilter } from "./ingest.js";
 import { ReconnectRequiredError } from "./provider-http.js";
 import { repo, type AccountRow } from "./repo.js";
 import { backfillGmail, syncGmail, type GmailCursor, type SyncRun } from "./sync-gmail.js";
@@ -150,6 +150,7 @@ export async function backfillContact(job: Job, ctx: JobContext): Promise<JobOut
   if (!contact) return { status: "skipped", result: { reason: "lead deleted" } };
   if (contact.email_normalized !== email) return { status: "skipped", result: { reason: "email changed" } };
   if (!isValidAddress(email)) return { status: "skipped", result: { reason: "not a valid address" } };
+  if ((await internalAddressFilter(contact.workspace_id))(email)) return { status: "skipped", result: { reason: "a teammate's own address" } };
   if (!features.tokenEncryption()) return { status: "skipped", result: { reason: "email not configured" } };
 
   const accounts = (await repo().listAccounts({ workspaceId: contact.workspace_id, statuses: ["active"] })).filter(

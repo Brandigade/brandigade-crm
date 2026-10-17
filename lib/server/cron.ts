@@ -1,5 +1,5 @@
 import { getEnv } from "./env.js";
-import { bearerToken, unauthorized } from "./http.js";
+import { bearerToken, errorSummary, unauthorized } from "./http.js";
 import { safeEqual } from "./crypto.js";
 import { adminClient } from "./supabase.js";
 import { runJobs, type JobHandler } from "./jobs.js";
@@ -31,7 +31,7 @@ async function step<T>(name: string, fn: () => Promise<T>): Promise<{ ok: true; 
     return { ok: true, value: await fn() };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    console.error(`cron step ${name} failed:`, err);
+    console.error(`cron step ${name} failed:`, errorSummary(err));
     return { ok: false, error };
   }
 }
@@ -44,8 +44,13 @@ export async function runTick(opts: { budgetMs?: number; now?: Date } = {}) {
   const result: Record<string, unknown> = {};
   // Cheap: work out which reminders / digests are due and queue them.
   result.scheduleNotifications = await step("scheduleNotifications", () => scheduleNotifications({ now }));
-  // Send queued notifications, backfills, recording copies (leave time for sync).
-  result.jobs = await step("jobs", () => runJobs(allJobHandlers(), { deadline: started + Math.floor(budget * 0.5) }));
+  // Notification emails first, with their own share of the time, so a large
+  // import (one backfill job per lead) can never delay reminders.
+  result.notificationJobs = await step("notificationJobs", () => runJobs(notificationJobHandlers, { deadline: started + Math.floor(budget * 0.3) }));
+  // Then mailbox backfills and recording copies, a bounded number per tick.
+  result.jobs = await step("jobs", () =>
+    runJobs({ ...emailJobHandlers, ...voiceJobHandlers }, { deadline: started + Math.floor(budget * 0.55), maxJobs: 25 }),
+  );
   // Pull new mail from connected mailboxes.
   result.emailSync = await step("emailSync", () => syncDueEmailAccounts({ deadline }));
   result.reaped = await step("reap", async () => {

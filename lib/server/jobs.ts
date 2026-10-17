@@ -94,7 +94,7 @@ export interface RunJobsSummary {
  */
 export async function runJobs(
   handlers: Record<string, JobHandler>,
-  opts: { deadline: number; batchSize?: number; leaseSeconds?: number },
+  opts: { deadline: number; batchSize?: number; leaseSeconds?: number; maxJobs?: number },
 ): Promise<RunJobsSummary> {
   const kinds = Object.keys(handlers);
   const summary: RunJobsSummary = { claimed: 0, done: 0, skipped: 0, retried: 0, dead: 0 };
@@ -103,8 +103,9 @@ export async function runJobs(
   const batchSize = opts.batchSize ?? 10;
   const lease = opts.leaseSeconds ?? 120;
 
-  while (Date.now() < opts.deadline - 5_000) {
-    const { data, error } = await db.rpc("claim_jobs", { p_kinds: kinds, p_limit: batchSize, p_lease_seconds: lease });
+  const maxJobs = opts.maxJobs ?? Infinity;
+  while (Date.now() < opts.deadline - 5_000 && summary.claimed < maxJobs) {
+    const { data, error } = await db.rpc("claim_jobs", { p_kinds: kinds, p_limit: Math.min(batchSize, maxJobs - summary.claimed), p_lease_seconds: lease });
     if (error) throw error;
     const jobs = (data || []) as Job[];
     if (!jobs.length) break;

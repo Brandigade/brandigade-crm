@@ -3,7 +3,7 @@ import { __setAdminClientForTests } from "../../../lib/server/supabase.js";
 import { EDITORS, OWNER, requireAuth } from "../../../lib/server/auth.js";
 import { backoffMs, PermanentJobError, RetryJobLater, runJobs } from "../../../lib/server/jobs.js";
 import { requireCronSecret } from "../../../lib/server/cron.js";
-import { coreRoutes } from "../../../lib/server/core-routes.js";
+import { __resetAutoConfirmCache, coreRoutes } from "../../../lib/server/core-routes.js";
 import { fakeSupabase } from "./fake-supabase.js";
 
 const env = { ...process.env };
@@ -149,27 +149,62 @@ describe("team-admin", () => {
   });
 });
 
-describe("team-admin invite matching", () => {
-  it("treats _ and % in an address literally", async () => {
+describe("team-admin invites and existing accounts", () => {
+  const route = coreRoutes.find((r) => r.path === "/api/team-admin")!;
+  function fake(existing: { id: string; confirmed: boolean; memberships?: number } | null) {
     const seen: string[] = [];
     const f = fakeSupabase(
       {
-        "from:workspace_members:select": (c) => (c.filters.some((x) => x[1] === "user_id" && x[2] === "u1") ? { data: { workspace_id: "ws1", role: "owner" } } : { data: null }),
+        "from:workspace_members:select": (c) => {
+          if (c.filters.some((x) => x[1] === "user_id" && x[2] === "u1")) return { data: { workspace_id: "ws1", role: "owner" } };
+          return { data: null, count: existing?.memberships ?? 0 };
+        },
         "from:profiles": (c) => {
           const e = c.filters.find((x) => x[1] === "email");
-          if (e) seen.push(String(e[2]));
-          return { data: e ? null : { is_platform_admin: false } };
+          if (e) { seen.push(e[0] + ":" + String(e[2])); return { data: existing ? { id: existing.id } : null }; }
+          return { data: { is_platform_admin: false } };
         },
         "from:workspaces": () => ({ data: { id: "ws1", status: "active" } }),
+        "from:workspace_members:insert": () => ({ data: null }),
       },
-      { getUser: () => ({ data: { user: { id: "u1", email: "o@x.co" } }, error: null }) },
+      {
+        getUser: () => ({ data: { user: { id: "u1", email: "o@x.co" } }, error: null }),
+        users: existing ? { [existing.id]: { email_confirmed_at: existing.confirmed ? "2026-10-01T00:00:00Z" : null } } : {},
+      },
     );
     __setAdminClientForTests(f.client);
-    const route = coreRoutes.find((r) => r.path === "/api/team-admin")!;
-    await route.handler(
-      new Request("http://x/api/team-admin", { method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify({ action: "invite", email: "a_b%c@x.co", role: "viewer" }) }),
+    return { ...f, seen };
+  }
+  const invite = (email: string) =>
+    route.handler(
+      new Request("http://x/api/team-admin", { method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify({ action: "invite", email, role: "editor" }) }),
       { url: new URL("http://x/api/team-admin"), params: {} },
     );
-    expect(seen).toEqual(["a\\_b\\%c@x.co"]);
+
+  it("matches the address exactly, never as a pattern", async () => {
+    __resetAutoConfirmCache(false);
+    const f = fake(null);
+    await invite("A_b*c%@X.co");
+    expect(f.seen).toEqual(["eq:a_b*c%@x.co"]);
+  });
+  it("replaces a never-confirmed sign-up with a real invite (no seat squatting)", async () => {
+    __resetAutoConfirmCache(false);
+    const f = fake({ id: "squatter", confirmed: false });
+    const res = await (await invite("newhire@x.co")).json();
+    expect(f.calls.some((c) => c.name === "deleteUser" && c.args === "squatter")).toBe(true);
+    expect(f.calls.some((c) => c.name === "invite")).toBe(true);
+    expect(res).toMatchObject({ success: true, emailed: true, userId: "new-user" });
+  });
+  it("adds a confirmed existing account directly", async () => {
+    __resetAutoConfirmCache(false);
+    const f = fake({ id: "real", confirmed: true });
+    const res = await (await invite("colleague@x.co")).json();
+    expect(f.calls.some((c) => c.name === "invite" || c.name === "deleteUser")).toBe(false);
+    expect(res).toMatchObject({ emailed: false, userId: "real" });
+  });
+  it("refuses existing accounts when sign-ups are auto-confirmed (confirmation proves nothing)", async () => {
+    __resetAutoConfirmCache(true);
+    fake({ id: "maybe", confirmed: true });
+    await expect(invite("someone@x.co")).rejects.toMatchObject({ status: 400, code: "unverified_account" });
   });
 });

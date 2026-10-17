@@ -83,10 +83,23 @@ describe("identities and settings", () => {
     expect(() => identityForUser("not-a-uuid")).toThrow();
   });
   it("reads the owner's calling settings with safe defaults", () => {
-    expect(callSettings({})).toEqual({ recording: false, announcement: DEFAULT_ANNOUNCEMENT, recordingAccess: "editors", defaultCountry: undefined });
+    expect(callSettings({})).toEqual({ recording: false, announcement: DEFAULT_ANNOUNCEMENT, recordingAccess: "editors", defaultCountry: undefined, allowedCallCountries: [] });
     const s = callSettings({ callRecording: "on", recordingAnnouncement: "  We record\ncalls.  ", recordingAccess: "all", defaultCountry: "gb" });
-    expect(s).toEqual({ recording: true, announcement: "We record calls.", recordingAccess: "all", defaultCountry: "GB" });
+    expect(s).toEqual({ recording: true, announcement: "We record calls.", recordingAccess: "all", defaultCountry: "GB", allowedCallCountries: ["GB"] });
+    expect(callSettings({ defaultCountry: "GB", allowedCallCountries: ["us", "ae", "nope", "US"] }).allowedCallCountries).toEqual(["US", "AE"]);
     expect(callSettings({ callRecording: true, recordingAccess: "anyone" })).toMatchObject({ recording: false, recordingAccess: "editors" });
     expect(callSettings({ recordingAnnouncement: "x".repeat(1000) }).announcement).toHaveLength(300);
+  });
+});
+
+describe("toll-fraud rules", () => {
+  it("only dials ordinary numbers in allowed countries", () => {
+    expect(dialableNumber("+14155550143", undefined, ["US"])).toEqual({ ok: true, e164: "+14155550143" });
+    expect(dialableNumber("+442071838750", undefined, ["US"]).ok).toBe(false);
+    expect(dialableNumber("+442071838750", undefined, ["US", "GB"]).ok).toBe(true);
+    expect(dialableNumber("+442071838750").ok).toBe(true);
+  });
+  it("refuses premium-rate, shared-cost and personal numbers", () => {
+    for (const n of ["+19005550123", "+448449040000", "+447012345678"]) expect(dialableNumber(n).ok).toBe(false);
   });
 });

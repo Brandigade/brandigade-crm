@@ -107,7 +107,7 @@ returns void language sql as $$
   values (id, (select w.id from public.workspaces w), account, owner, 'google', pid, iid, dir, frm, too, subj, 'snippet of ' || subj, at, vis, contacts);
 $$;
 create or replace function pg_temp.email_acts(iid text) returns bigint language sql as $$
-  select count(*) from public.activities where dedupe_key = 'email:' || iid or left(dedupe_key, length('email:' || iid || ':')) = 'email:' || iid || ':';
+  select count(*) from public.activities where left(dedupe_key, length('email:' || iid || '|')) = 'email:' || iid || '|';
 $$;
 
 -- The same email in two teammates' mailboxes shows once.
@@ -118,7 +118,7 @@ select pg_temp.mail('61000000-0000-0000-0000-000000000002', '60000000-0000-0000-
   array['50000000-0000-0000-0000-0000000000a1', '50000000-0000-0000-0000-0000000000a2']::uuid[]);
 do $$ declare a public.activities; begin
   assert pg_temp.email_acts('<m1@x>') = 1, 'one timeline entry for one email';
-  select * into a from public.activities where dedupe_key = 'email:<m1@x>';
+  select * into a from public.activities where dedupe_key = 'email:<m1@x>|lea@acme.com';
   assert a.type = 'email' and a.source = 'email' and a.event = 'inbound' and a.visibility = 'team', 'a team email';
   assert a.contact_id = '50000000-0000-0000-0000-0000000000a1', 'about the sender';
   assert a.company_id = '50000000-0000-0000-0000-0000000000c1', 'and their company';
@@ -132,18 +132,18 @@ select pg_temp.mail('61000000-0000-0000-0000-000000000003', '60000000-0000-0000-
 do $$ begin
   assert pg_temp.email_acts('<m2@x>') = 1, 'private email gets one entry';
   assert (select visibility = 'private' and owner_user_id = '10000000-0000-0000-0000-000000000001'
-          from public.activities where dedupe_key = 'email:<m2@x>:private:10000000-0000-0000-0000-000000000001'), 'only for its mailbox owner';
+          from public.activities where dedupe_key = 'email:<m2@x>|lea@acme.com:private:10000000-0000-0000-0000-000000000001'), 'only for its mailbox owner';
   assert (select last_activity_at from public.contacts where id = '50000000-0000-0000-0000-0000000000a1')
-         < (select occurred_at from public.activities where dedupe_key like 'email:<m2@x>:private:%') or true, 'private entries do not count as last touch';
+         < (select occurred_at from public.activities where dedupe_key like 'email:<m2@x>|lea@acme.com:private:%') or true, 'private entries do not count as last touch';
 end $$;
 select pg_temp.mail('61000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000002',
   'g3', '<m2@x>', 'inbound', 'lea@acme.com', '[{"email":"editor@t.co"}]', 'Quiet', 'team', array['50000000-0000-0000-0000-0000000000a1']::uuid[]);
 do $$ begin
-  assert pg_temp.email_acts('<m2@x>') = 1 and exists (select 1 from public.activities where dedupe_key = 'email:<m2@x>' and visibility = 'team'), 'a team copy makes one shared entry';
+  assert pg_temp.email_acts('<m2@x>') = 1 and exists (select 1 from public.activities where dedupe_key = 'email:<m2@x>|lea@acme.com' and visibility = 'team'), 'a team copy makes one shared entry';
 end $$;
 update public.email_messages set visibility = 'private' where id = '61000000-0000-0000-0000-000000000004';
 do $$ begin
-  assert pg_temp.email_acts('<m2@x>') = 2 and not exists (select 1 from public.activities where dedupe_key = 'email:<m2@x>'), 'made private again: one private entry per owner';
+  assert pg_temp.email_acts('<m2@x>') = 2 and not exists (select 1 from public.activities where dedupe_key = 'email:<m2@x>|lea@acme.com'), 'made private again: one private entry per owner';
 end $$;
 
 -- An outgoing email is about its first recipient who is a lead.
@@ -151,14 +151,39 @@ select pg_temp.mail('61000000-0000-0000-0000-000000000005', '60000000-0000-0000-
   'g4', '<m3@x>', 'outbound', 'editor@t.co', '[{"email":"bo@acme.com"},{"email":"lea@acme.com"}]', 'Proposal', 'team',
   array['50000000-0000-0000-0000-0000000000a1', '50000000-0000-0000-0000-0000000000a2']::uuid[]);
 do $$ begin
-  assert (select contact_id from public.activities where dedupe_key = 'email:<m3@x>') = '50000000-0000-0000-0000-0000000000a2', 'outgoing: first recipient';
-  assert (select actor_id from public.activities where dedupe_key = 'email:<m3@x>') = '10000000-0000-0000-0000-000000000002', 'outgoing: sent by the mailbox owner';
+  assert (select contact_id from public.activities where dedupe_key = 'email:<m3@x>|editor@t.co') = '50000000-0000-0000-0000-0000000000a2', 'outgoing: first recipient';
+  assert (select actor_id from public.activities where dedupe_key = 'email:<m3@x>|editor@t.co') = '10000000-0000-0000-0000-000000000002', 'outgoing: sent by the mailbox owner';
 end $$;
 -- No Message-ID: the email is its own group.
 select pg_temp.mail('61000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000002',
   'g5', null, 'inbound', 'cy@else.com', '[{"email":"editor@t.co"}]', 'No id', 'team', array['50000000-0000-0000-0000-0000000000a3']::uuid[]);
 do $$ begin
   assert exists (select 1 from public.activities where dedupe_key = 'email:msg:61000000-0000-0000-0000-000000000006'), 'emails without a Message-ID are kept';
+end $$;
+
+-- A message reusing someone else's Message-ID from another sender is not merged with it.
+select pg_temp.mail('61000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-0000000000a2', '10000000-0000-0000-0000-000000000005',
+  'o9', '<m2@x>', 'inbound', 'attacker@evil.com', '[{"email":"editor2@t.co"}]', 'Forged', 'team', array['50000000-0000-0000-0000-0000000000a1']::uuid[]);
+do $$ begin
+  assert (select count(*) from public.activities where dedupe_key like 'email:<m2@x>|lea@acme.com:private:%') = 2, 'the private entries of the real email are untouched';
+  assert exists (select 1 from public.activities where dedupe_key = 'email:<m2@x>|attacker@evil.com' and subject = 'Forged'), 'the forged message is its own entry';
+end $$;
+delete from public.email_messages where id = '61000000-0000-0000-0000-000000000008';
+do $$ begin
+  assert not exists (select 1 from public.activities where dedupe_key like 'email:<m2@x>|attacker@evil.com%'), 'deleting it removes only its entry';
+  assert (select count(*) from public.activities where dedupe_key like 'email:<m2@x>|lea@acme.com:private:%') = 2, 'the others stay';
+end $$;
+-- A shared entry only lists the leads of shared copies (a private Bcc stays private).
+insert into public.contacts (id, workspace_id, first_name, email) values ('50000000-0000-0000-0000-0000000000a5', :'crm', 'Bcc', 'bcc@else.com');
+select pg_temp.mail('61000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-0000000000a3', '10000000-0000-0000-0000-000000000001',
+  'g9', '<m9@x>', 'outbound', 'editor@t.co', '[{"email":"lea@acme.com"}]', 'Bcc test', 'private',
+  array['50000000-0000-0000-0000-0000000000a1', '50000000-0000-0000-0000-0000000000a5']::uuid[]);
+select pg_temp.mail('61000000-0000-0000-0000-00000000000a', '60000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000002',
+  'g10', '<m9@x>', 'outbound', 'editor@t.co', '[{"email":"lea@acme.com"}]', 'Bcc test', 'team',
+  array['50000000-0000-0000-0000-0000000000a1']::uuid[]);
+do $$ begin
+  assert (select related_contact_ids from public.activities where dedupe_key = 'email:<m9@x>|editor@t.co') = array['50000000-0000-0000-0000-0000000000a1']::uuid[],
+         'the private copy''s Bcc lead is not added to the shared entry';
 end $$;
 
 -- Deleting a lead removes emails that only involved them.

@@ -133,6 +133,8 @@ export interface EmailRepo {
   deleteTokens(accountId: string): Promise<void>;
 
   contactsByEmails(workspaceId: string, emails: string[]): Promise<ContactMatch[]>;
+  /** The team's own addresses (members, connected mailboxes) and internal domains: never matched as leads. */
+  internalAddresses?(workspaceId: string): Promise<{ emails: string[]; domains: string[] }>;
   getContact(id: string): Promise<{ id: string; workspace_id: string; email_normalized: string | null } | null>;
 
   storedMessages(accountId: string, providerIds: string[]): Promise<StoredMessage[]>;
@@ -249,6 +251,24 @@ export function supabaseRepo(db: SupabaseClient): EmailRepo {
         out.push(...((check(res, "Matching leads") as ContactMatch[]) || []));
       }
       return out;
+    },
+    async internalAddresses(workspaceId) {
+      const [members, accounts, ws] = await Promise.all([
+        db.from("workspace_members").select("profiles(email)").eq("workspace_id", workspaceId),
+        db.from("email_accounts").select("email_address").eq("workspace_id", workspaceId),
+        db.from("workspaces").select("settings").eq("id", workspaceId).maybeSingle(),
+      ]);
+      const emails = new Set<string>();
+      for (const m of (check(members, "Reading the team") as { profiles: { email: string | null } | { email: string | null }[] | null }[]) || []) {
+        const p = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        if (p?.email) emails.add(p.email.trim().toLowerCase());
+      }
+      for (const a of (check(accounts, "Reading mailboxes") as { email_address: string }[]) || []) emails.add(a.email_address.trim().toLowerCase());
+      const settings = ((check(ws, "Reading settings") as { settings?: Record<string, unknown> } | null)?.settings || {}) as Record<string, unknown>;
+      const domains = Array.isArray(settings.internalDomains)
+        ? settings.internalDomains.filter((d): d is string => typeof d === "string" && /^[a-z0-9.-]+.[a-z]{2,}$/i.test(d.trim())).map((d) => d.trim().toLowerCase())
+        : [];
+      return { emails: [...emails], domains };
     },
     async getContact(id) {
       const res = await db.from("contacts").select("id,workspace_id,email_normalized").eq("id", id).maybeSingle();

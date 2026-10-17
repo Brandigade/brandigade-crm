@@ -69,9 +69,20 @@ export function memoryDb(init: Record<string, Row[]> = {}, opts: MemoryDbOptions
     let options: any = {};
     let returning = false;
     let limitN: number | null = null;
+    let countMode = false;
+    let headOnly = false;
     const orders: [string, boolean][] = [];
     const add = (name: string, fn: (r: Row) => boolean) => { desc.push(name); filters.push(fn); return q; };
-    q.select = () => { if (op !== "select") returning = true; return q; };
+    q.select = (_cols?: string, o?: { count?: string; head?: boolean }) => {
+      if (op !== "select") returning = true;
+      if (o?.count) countMode = true;
+      if (o?.head) headOnly = true;
+      return q;
+    };
+    q.gte = (c: string, v: unknown) => add(`${c}>=${v}`, (r) => r[c] != null && String(r[c]) >= String(v));
+    q.gt = (c: string, v: unknown) => add(`${c}>${v}`, (r) => r[c] != null && String(r[c]) > String(v));
+    q.lte = (c: string, v: unknown) => add(`${c}<=${v}`, (r) => r[c] != null && String(r[c]) <= String(v));
+    q.lt = (c: string, v: unknown) => add(`${c}<${v}`, (r) => r[c] != null && String(r[c]) < String(v));
     q.eq = (c: string, v: unknown) => add(`${c}=${v}`, (r) => r[c] === v || (r[c] != null && v != null && String(r[c]) === String(v)));
     q.neq = (c: string, v: unknown) => add(`${c}!=${v}`, (r) => r[c] !== v);
     q.in = (c: string, vs: unknown[]) => add(`${c} in`, (r) => vs.includes(r[c]));
@@ -122,6 +133,7 @@ export function memoryDb(init: Record<string, Row[]> = {}, opts: MemoryDbOptions
       let rows = matched().map((r) => ({ ...r }));
       for (const [c, asc] of orders.slice().reverse()) rows.sort((a, b) => (a[c] === b[c] ? 0 : (a[c] > b[c] ? 1 : -1) * (asc ? 1 : -1)));
       if (limitN != null) rows = rows.slice(0, limitN);
+      if (countMode) return { data: headOnly ? null : rows, error: null, count: rows.length } as any;
       return { data: rows, error: null };
     };
     q.maybeSingle = async () => {

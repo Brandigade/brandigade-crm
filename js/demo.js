@@ -310,6 +310,12 @@ function createDemoClient(opts){
         rows.forEach(r => {
           emit(table, "DELETE", null, r);
           afterWrite(table, "DELETE", r, null);
+          // the database's delete_record_notes trigger
+          if(table === "contacts" || table === "deals"){
+            const own = a => a.source === "manual" && (table === "contacts" ? (a.contact_id === r.id && !a.deal_id) : (a.deal_id === r.id && !a.contact_id));
+            tableOf("activities").filter(own).forEach(a => emit("activities", "DELETE", null, a));
+            store.activities = tableOf("activities").filter(a => !own(a));
+          }
           // the database's ON DELETE SET NULL
           const refs = { companies:["company_id"], contacts:["contact_id"], deals:["deal_id"], tasks:["task_id"] }[table] || [];
           refs.forEach(col => ["contacts", "deals", "tasks", "activities", "calls"].forEach(t2 => tableOf(t2).forEach(x => { if(x[col] === r.id) x[col] = null; })));

@@ -109,6 +109,19 @@ do $$ begin
   assert exists (select 1 from public.activities where subject = 'Editor private'), 'others cannot edit a private note';
 end $$;
 
+-- Only a note's author (or the owner) can change or delete it.
+set role authenticated;
+select pg_temp.act_as('10000000-0000-0000-0000-000000000005');
+update public.activities set subject = 'rewritten by someone else' where subject = 'Team note';
+delete from public.activities where subject = 'Team note';
+select pg_temp.act_as('10000000-0000-0000-0000-000000000001');
+update public.activities set body = 'owner tidy-up' where subject = 'Team note';
+reset role;
+do $$ begin
+  assert (select subject from public.activities where id = '20000000-0000-0000-0000-0000000000e1') = 'Team note', 'another editor cannot rewrite or delete a note';
+  assert (select body from public.activities where id = '20000000-0000-0000-0000-0000000000e1') = 'owner tidy-up', 'the owner can';
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Viewers read; outsiders see nothing.
 -- ---------------------------------------------------------------------------
@@ -181,6 +194,8 @@ do $$ begin
   assert pg_temp.n($q$select 1 from public.get_timeline('contact', '20000000-0000-0000-0000-0000000000a1', null, null, 50, '{email}')$q$) = 1, 'editor''s timeline shows one email';
 end $$;
 select pg_temp.denied($q$select public.set_email_visibility('31000000-0000-0000-0000-0000000000e2', 'team')$q$);
+select pg_temp.denied('select sync_cursor from public.email_accounts');
+do $$ begin assert pg_temp.n('select id, status, last_synced_at from public.email_accounts') = 1, 'status columns stay readable'; end $$;
 select pg_temp.denied($q$select public.update_email_account_settings('30000000-0000-0000-0000-0000000000a2', 'team', null)$q$);
 select pg_temp.act_as('10000000-0000-0000-0000-000000000005');
 do $$ begin
@@ -189,7 +204,7 @@ do $$ begin
 end $$;
 select pg_temp.act_as('10000000-0000-0000-0000-000000000001');
 do $$ begin
-  assert pg_temp.n('select 1 from public.email_accounts') = 2, 'the CRM owner sees every mailbox''s connection status';
+  assert pg_temp.n('select 1 from public.email_accounts') = 1, 'the CRM owner sees shared mailboxes'' status, not private ones';
   assert pg_temp.n('select 1 from public.email_messages') = 1, 'but not other people''s private emails';
 end $$;
 select pg_temp.act_as('10000000-0000-0000-0000-000000000003');
@@ -298,6 +313,11 @@ end $$;
 -- Removing someone destroys their mailbox tokens and stops syncing.
 -- ---------------------------------------------------------------------------
 delete from public.workspace_members where user_id = '10000000-0000-0000-0000-000000000005';
+set role authenticated;
+select pg_temp.act_as('10000000-0000-0000-0000-000000000005');
+select pg_temp.denied($q$select public.update_email_account_settings('30000000-0000-0000-0000-0000000000a2', 'private', null)$q$);
+select pg_temp.denied($q$select public.set_email_visibility('31000000-0000-0000-0000-0000000000e2', 'team')$q$);
+reset role;
 do $$ begin
   assert (select status from public.email_accounts where id = '30000000-0000-0000-0000-0000000000a2') = 'disconnected', 'mailbox disconnected';
   assert not (select sync_enabled from public.email_accounts where id = '30000000-0000-0000-0000-0000000000a2'), 'sync off';
@@ -305,6 +325,32 @@ do $$ begin
   assert exists (select 1 from public.email_account_tokens where account_id = '30000000-0000-0000-0000-0000000000a1'), 'other mailboxes untouched';
 end $$;
 insert into public.workspace_members (workspace_id, user_id, role) values (:'crm', '10000000-0000-0000-0000-000000000005', 'editor');
+
+-- Profile photos must be embedded images; names are bounded.
+set role authenticated;
+select pg_temp.act_as('10000000-0000-0000-0000-000000000003');
+do $$ begin
+  begin
+    update public.profiles set avatar_data = 'https://attacker.example/pixel.gif' where id = auth.uid();
+    raise exception 'a remote avatar URL was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.profiles set display_name = repeat('x', 101) where id = auth.uid();
+    raise exception 'an over-long name was accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+update public.profiles set avatar_data = 'data:image/png;base64,iVBORw0KGgo=', display_name = 'Vic' where id = auth.uid();
+reset role;
+
+-- Deleting a lead deletes the notes that only belonged to it.
+insert into public.contacts (id, workspace_id, first_name) values ('20000000-0000-0000-0000-0000000000a9', :'crm', 'Gone');
+insert into public.activities (workspace_id, type, subject, contact_id) values (:'crm', 'note', 'Note on a lead about to go', '20000000-0000-0000-0000-0000000000a9');
+delete from public.contacts where id = '20000000-0000-0000-0000-0000000000a9';
+do $$ begin
+  assert not exists (select 1 from public.activities where subject = 'Note on a lead about to go'), 'a deleted lead takes its own notes with it';
+end $$;
 
 -- Clean up records for the next file (people stay).
 delete from public.email_accounts; delete from public.calls; delete from public.activities; delete from public.tasks;

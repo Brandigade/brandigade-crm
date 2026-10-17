@@ -22,6 +22,8 @@ import { DAY } from "./time.js";
 //                                   secret values), last-24h counts and recent
 //                                   delivery failures.
 
+export const MAX_TEST_EMAILS_PER_DAY = 5;
+
 export interface RouteDeps {
   sender?: () => SenderConfig | null;
   send?: (msg: OutgoingEmail, cfg: SenderConfig) => Promise<SendResult>;
@@ -54,6 +56,14 @@ export function createNotificationRoutes(overrides: RouteDeps = {}): Route[] {
     // The queued row is the rate limit (one per minute) and the delivery log.
     // It is scheduled 15 minutes out so no worker picks it up while this
     // request is sending it.
+    // Also at most a few a day, so test emails can't use up the sender's daily quota.
+    const { count: today } = await db
+      .from("job_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", KINDS.test)
+      .eq("payload->>user_id", auth.userId)
+      .gte("created_at", new Date(now.getTime() - DAY).toISOString());
+    if ((today || 0) >= MAX_TEST_EMAILS_PER_DAY) throw new HttpError(429, "You have sent the maximum number of test emails for today.", "rate_limited");
     const key = dedupeKeys.test(auth.userId, now);
     const jobId = await enqueueJob(KINDS.test, { user_id: auth.userId }, { dedupeKey: key, workspaceId: auth.workspaceId, runAfter: new Date(now.getTime() + 15 * 60_000), maxAttempts: 1 });
     if (jobId === null) throw new HttpError(429, "You can send one test email a minute. Try again in a moment.", "rate_limited");

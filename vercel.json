@@ -50,7 +50,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https://*.supabase.co https://sdk.twilio.com https://media.twiliocdn.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.twilio.com wss://*.twilio.com; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+          "value": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/ https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.5/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https://wqdysxpormmxxaakfgtu.supabase.co https://sdk.twilio.com https://media.twiliocdn.com; connect-src 'self' https://wqdysxpormmxxaakfgtu.supabase.co wss://wqdysxpormmxxaakfgtu.supabase.co https://*.twilio.com wss://*.twilio.com; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         }
       ]
     },

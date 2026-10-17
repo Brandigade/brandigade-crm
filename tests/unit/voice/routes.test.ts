@@ -118,6 +118,17 @@ describe("POST /api/voice/outbound", () => {
     });
   });
 
+  it("stops a person who has placed too many calls this hour (toll fraud)", async () => {
+    const recent = new Date(Date.now() - 10 * 60_000).toISOString();
+    for (let i = 0; i < 60; i++) {
+      db.tables.calls.push({ id: "00000000-0000-4000-8000-" + String(i).padStart(12, "0"), workspace_id: ids.ws, provider_call_sid: sid("CA", 900 + i), direction: "outbound", status: "completed", user_id: ids.editor, started_at: recent });
+    }
+    const xml = await text(await call(base({ contactId: ids.maya })));
+    expect(xml).toMatch(/limit of calls per hour/);
+    expect(xml).not.toMatch(/<Dial/);
+    expect(calls()).toHaveLength(60);
+  });
+
   it("links the task and the task's deal", async () => {
     await call(base({ taskId: ids.task }));
     expect(calls()[0]).toMatchObject({ contact_id: ids.maya, task_id: ids.task, deal_id: ids.deal });

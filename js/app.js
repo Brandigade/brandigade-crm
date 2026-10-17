@@ -437,7 +437,8 @@ function initials(name, email){
 
 function fillAvatarEl(el, profile){
   el.innerHTML = "";
-  if(profile && profile.avatar_data){
+  // Only embedded images: a remote URL would reveal teammates' IP addresses.
+  if(profile && typeof profile.avatar_data === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(profile.avatar_data)){
     const img = document.createElement("img");
     img.src = profile.avatar_data;
     img.alt = "";
@@ -1211,7 +1212,9 @@ const deleteRecordFromModal = guardEdit(async function(){
   } else if(kind === "deal"){
     state.board.forEach(t => { if(t.dealId === id) t.dealId = null; });
   }
-  state.activities = state.activities.filter(a => !(
+  // The database deletes the notes that only belonged to this lead or deal
+  // (any author's); here they are just dropped from the screen.
+  forgetLocalRecords("activities", a => (a.source || "manual") === "manual" && (
     (kind === "contact" && a.contactId === id && !a.dealId) ||
     (kind === "deal" && a.dealId === id && !a.contactId)
   ));
@@ -1875,11 +1878,13 @@ const addInvite = guardOwnerOnly(async function(){
   const originalLabel = btn.textContent;
   btn.textContent = "Sending invite…";
   try{
-    await callTeamAdminFunction({ action:"invite", workspaceId: currentWorkspace.id, email, role, redirectTo: window.location.origin + window.location.pathname });
+    const res = await callTeamAdminFunction({ action:"invite", workspaceId: currentWorkspace.id, email, role, redirectTo: window.location.origin + window.location.pathname });
     emailInput.value = "";
     await fetchTeam();
     renderTeam();
-    notify("Invite sent", DEMO ? email + " (demo: no email is sent)" : email);
+    if(DEMO) notify("Invite sent", email + " (demo: no email is sent)");
+    else if(res && res.emailed === false) notify("Added to the team", email + " already had an account and can log in now.");
+    else notify("Invite sent", email);
   }catch(err){
     notify("Invite not sent", err.message || "Unknown error");
   }finally{

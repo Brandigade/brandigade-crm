@@ -28,16 +28,24 @@ export function toE164(raw: unknown, defaultCountry?: CountryCode): string | nul
 
 export const digitsOf = (v: unknown) => String(v ?? "").replace(/[^0-9]/g, "");
 
+// Number types the CRM never dials (toll fraud): premium rate, shared cost,
+// universal access, personal numbers, and numbers whose type is unknown.
+const REFUSED_TYPES = new Set(["PREMIUM_RATE", "SHARED_COST", "UAN", "PERSONAL_NUMBER", "PAGER", "VOICEMAIL"]);
+
 /**
  * Whether the CRM may place a call to this number. Numbers must be valid for
- * their country; premium-rate numbers are refused outright (toll fraud).
+ * their country, of an ordinary type, and in an allowed country (toll fraud).
  */
-export function dialableNumber(raw: unknown, defaultCountry?: CountryCode): { ok: true; e164: string } | { ok: false; reason: string } {
+export function dialableNumber(raw: unknown, defaultCountry?: CountryCode, allowedCountries: CountryCode[] = []): { ok: true; e164: string } | { ok: false; reason: string } {
   const pn = parse(raw, defaultCountry);
   if (!pn || !pn.isPossible() || !pn.isValid()) {
     return { ok: false, reason: "The phone number on this record isn't a valid number. Check it includes the country code." };
   }
-  if (pn.getType() === "PREMIUM_RATE") return { ok: false, reason: "The CRM doesn't call premium rate numbers." };
+  const type = pn.getType();
+  if (!type || REFUSED_TYPES.has(type)) return { ok: false, reason: "The CRM doesn't call premium rate, shared cost or special numbers." };
+  if (allowedCountries.length && (!pn.country || !allowedCountries.includes(pn.country))) {
+    return { ok: false, reason: "Calls to that country aren't allowed. The CRM owner can allow more countries on the Team page." };
+  }
   return { ok: true, e164: pn.number };
 }
 

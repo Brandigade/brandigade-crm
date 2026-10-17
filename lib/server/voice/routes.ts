@@ -10,6 +10,8 @@ import {
   callSettings,
   identityForUser,
   isUuid,
+  MAX_CALLS_PER_DAY,
+  MAX_CALLS_PER_HOUR,
   missingTwilioEnv,
   RECORDING_URL_TTL_SECONDS,
   RECORDINGS_BUCKET,
@@ -85,7 +87,7 @@ interface Target {
   toNumber: string;
 }
 
-async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<string, string>, country: ReturnType<typeof callSettings>["defaultCountry"]): Promise<Target | { error: string }> {
+async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<string, string>, country: ReturnType<typeof callSettings>["defaultCountry"], allowed: ReturnType<typeof callSettings>["allowedCallCountries"] = []): Promise<Target | { error: string }> {
   const contactParam = str(p.contactId, 64).trim();
   const companyParam = str(p.companyId, 64).trim();
   const taskParam = str(p.taskId, 64).trim();
@@ -142,7 +144,7 @@ async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<
   const candidates = wanted ? [wanted] : numbers;
   let lastReason: string = MESSAGES.noNumber;
   for (const n of candidates) {
-    const d = dialableNumber(n, country);
+    const d = dialableNumber(n, country, allowed);
     if (d.ok) {
       if (d.e164 === toE164(getEnv("TWILIO_CALLER_ID"))) return { error: MESSAGES.ownNumber };
       return { contactId: resolvedContact, companyId: resolvedCompany, taskId: task?.id ?? null, dealId: deal?.id ?? null, toNumber: d.e164 };
@@ -150,6 +152,23 @@ async function resolveTarget(db: SupabaseClient, workspaceId: string, p: Record<
     lastReason = d.reason;
   }
   return { error: candidates.length ? "Sorry, this call can't be placed. " + lastReason : MESSAGES.noNumber };
+}
+
+// How many calls this person placed recently; over the limit, no more calls.
+async function overCallLimit(db: SupabaseClient, userId: string): Promise<string | null> {
+  const count = async (sinceMs: number) => {
+    const { count: n, error } = await db
+      .from("calls")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("direction", "outbound")
+      .gte("started_at", new Date(Date.now() - sinceMs).toISOString());
+    if (error) throw error;
+    return n || 0;
+  };
+  if ((await count(3_600_000)) >= MAX_CALLS_PER_HOUR) return "Sorry, you have reached the limit of calls per hour. Please try again later.";
+  if ((await count(86_400_000)) >= MAX_CALLS_PER_DAY) return "Sorry, you have reached the limit of calls per day. Please try again tomorrow.";
+  return null;
 }
 
 async function outbound(req: Request): Promise<Response> {
@@ -175,7 +194,9 @@ async function outbound(req: Request): Promise<Response> {
 
     const ws = await loadWorkspace(db, member.workspaceId);
     const settings = callSettings(ws.settings);
-    const target = await resolveTarget(db, ws.id, p, settings.defaultCountry);
+    const limited = await overCallLimit(db, userId);
+    if (limited) return twiml(sayAndHangup(limited));
+    const target = await resolveTarget(db, ws.id, p, settings.defaultCountry, settings.allowedCallCountries);
     if ("error" in target) return twiml(sayAndHangup(target.error));
 
     const row = await insertCallOnce(db, {
