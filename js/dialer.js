@@ -622,7 +622,7 @@ window.DialerUI = window.DialerUI || {};
     o.id = id;
     o.innerHTML = `
       <div class="task-modal dialer-modal" role="dialog" aria-modal="true" aria-labelledby="${id}-title">
-        <div class="task-modal-head"><h3 id="${id}-title">${escapeHtml(title)}</h3><span class="task-modal-close" data-close="1" title="Close">&times;</span></div>
+        <div class="task-modal-head"><h3 id="${id}-title">${escapeHtml(title)}</h3><button type="button" class="task-modal-close" data-close="1" title="Close" aria-label="Close">&times;</button></div>
         <div class="task-modal-body"></div>
         <div class="task-modal-foot"><div class="dialer-modal-msg" aria-live="polite"></div><div style="flex:1;"></div>
           <button type="button" class="btn btn-ghost" data-close="1"></button>

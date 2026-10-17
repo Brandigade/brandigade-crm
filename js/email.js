@@ -400,7 +400,7 @@
       <div class="task-modal email-composer" role="dialog" aria-modal="true" aria-labelledby="email-composer-title">
         <div class="task-modal-head">
           <h3 id="email-composer-title">New email</h3>
-          <span class="task-modal-close" data-act="close" role="button" tabindex="0" aria-label="Close">&times;</span>
+          <button type="button" class="task-modal-close" data-act="close" aria-label="Close">&times;</button>
         </div>
         <div class="task-modal-body">
           <div class="email-blocked hidden"></div>
@@ -431,7 +431,6 @@
       requestClose: () => closeComposer(false),
     };
     q('[data-act="close"]').addEventListener("click", () => closeComposer(false));
-    q('[data-act="close"]').addEventListener("keydown", (e) => { if(e.key === "Enter" || e.key === " ") closeComposer(false); });
     q('[data-act="cancel"]').addEventListener("click", () => closeComposer(false));
     m.send.addEventListener("click", sendDraft);
     m.fields.addEventListener("submit", (e) => { e.preventDefault(); });
@@ -670,7 +669,7 @@
       <div class="task-modal wide email-viewer" role="dialog" aria-modal="true" aria-labelledby="email-viewer-title">
         <div class="task-modal-head">
           <h3 id="email-viewer-title">Email</h3>
-          <span class="task-modal-close" data-act="close" role="button" tabindex="0" aria-label="Close">&times;</span>
+          <button type="button" class="task-modal-close" data-act="close" aria-label="Close">&times;</button>
         </div>
         <div class="task-modal-body">
           <div class="email-viewer-state" aria-live="polite"></div>
@@ -702,7 +701,6 @@
       requestClose: () => closeViewer(),
     };
     q('[data-act="close"]').addEventListener("click", closeViewer);
-    q('[data-act="close"]').addEventListener("keydown", (e) => { if(e.key === "Enter" || e.key === " ") closeViewer(); });
     q('[data-act="close-btn"]').addEventListener("click", closeViewer);
     overlay.addEventListener("mousedown", (e) => { if(e.target === overlay) closeViewer(); });
     q('[data-act="images"]').addEventListener("click", () => { if(v.current){ v.current.showImages = true; drawBody(); } });

@@ -815,8 +815,24 @@ function renderNav(){
 function switchTab(id){
   if(!visibleTabs().some(t => t.id === id)) id = "dashboard";
   TABS.forEach(t => document.getElementById("tab-"+t.id).classList.toggle("hidden", t.id !== id));
-  document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.tab === id));
+  document.querySelectorAll(".nav-item").forEach(el => {
+    const on = el.dataset.tab === id;
+    el.classList.toggle("active", on);
+    if(on) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
+  });
+  revealActiveNavItem();
   if(id === "dashboard") renderDashboard();
+}
+
+// On narrow screens the nav is a sideways-scrolling strip: keep the current tab in
+// view when it changes from elsewhere (a dashboard link, the avatar, a deep link).
+function revealActiveNavItem(){
+  const nav = document.getElementById("nav");
+  const active = nav && nav.querySelector(".nav-item.active");
+  if(!active || nav.scrollWidth <= nav.clientWidth) return;
+  const n = nav.getBoundingClientRect(), a = active.getBoundingClientRect();
+  if(a.left >= n.left && a.right <= n.right) return;
+  nav.scrollLeft += (a.left + a.width / 2) - (n.left + n.width / 2);
 }
 
 /* ============================================================
@@ -918,6 +934,7 @@ function renderDashboard(){
     const overdue = d.closeDate < todayIso();
     const row = document.createElement("div");
     row.className = "list-row";
+    row.tabIndex = 0;
     row.innerHTML = `
       <div class="lr-main"><div class="lr-title">${escapeHtml(d.title)}</div><div class="lr-sub">${escapeHtml(co ? co.name : "No company")} · ${stageById(d.stage).label}</div></div>
       <div class="lr-side"><div><b>${fmtMoney(d.value)}</b></div><div class="card-due-badge${overdue ? " overdue" : ""}">${fmtDay(d.closeDate)}</div></div>`;
@@ -946,6 +963,7 @@ function renderDashboard(){
   upcoming.forEach(t => {
     const row = document.createElement("div");
     row.className = "list-row";
+    row.tabIndex = 0;
     const due = formatDueBadge(t);
     const priority = t.priority || "none";
     const deal = t.dealId ? dealById(t.dealId) : null;
@@ -1033,6 +1051,7 @@ function makeDealCard(d){
   const card = document.createElement("div");
   card.className = "card";
   card.draggable = true;
+  card.tabIndex = 0;
   card.dataset.id = d.id;
   const co = companyById(d.companyId);
   const owner = personById(d.ownerId);
@@ -1083,6 +1102,7 @@ function renderContacts(){
     const touched = [c.lastActivityAt, local].filter(Boolean).sort().pop() || null;
     const tr = document.createElement("tr");
     tr.className = "clickable";
+    tr.tabIndex = 0;
     tr.dataset.id = c.id;
     tr.innerHTML = `
       <td><div class="cell-name"><div class="avatar avatar-sm">${escapeHtml(initials(contactName(c), c.email))}</div><div><div style="font-weight:600;">${escapeHtml(contactName(c))}</div><div class="sub">${escapeHtml(c.title || "")}</div></div></div></td>
@@ -1120,6 +1140,7 @@ function renderCompanies(){
     const wonVal = deals.filter(d => d.stage === "won").reduce((s, d) => s + (Number(d.value) || 0), 0);
     const tr = document.createElement("tr");
     tr.className = "clickable";
+    tr.tabIndex = 0;
     tr.dataset.id = c.id;
     tr.innerHTML = `
       <td><div style="font-weight:600;">${escapeHtml(c.name)}</div><div class="sub">${escapeHtml(c.website || "")}</div></td>
@@ -1331,6 +1352,7 @@ function activityFilterFor(kind, id){
 function miniDealRow(d){
   const row = document.createElement("div");
   row.className = "list-row";
+  row.tabIndex = 0;
   row.innerHTML = `<div class="lr-main"><div class="lr-title">${escapeHtml(d.title)}</div><div class="lr-sub">${stageById(d.stage).label}${d.closeDate ? " · " + fmtDay(d.closeDate) : ""}</div></div><div class="lr-side"><b>${fmtMoney(d.value)}</b></div>`;
   row.addEventListener("click", () => openRecordModal("deal", d.id));
   return row;
@@ -1364,6 +1386,7 @@ function renderRecordRelated(){
     cs.forEach(c => {
       const row = document.createElement("div");
       row.className = "list-row";
+      row.tabIndex = 0;
       row.innerHTML = `<div class="avatar avatar-sm">${escapeHtml(initials(contactName(c), c.email))}</div><div class="lr-main"><div class="lr-title">${escapeHtml(contactName(c))}</div><div class="lr-sub">${escapeHtml(c.title || c.email || "")}</div></div><span class="pill pill-${escapeHtml(c.status || "lead")}">${statusLabel(c.status)}</span>`;
       row.addEventListener("click", () => openRecordModal("contact", c.id));
       cl.appendChild(row);
@@ -1380,6 +1403,7 @@ function renderRecordRelated(){
     tasks.forEach(t => {
       const row = document.createElement("div");
       row.className = "list-row";
+      row.tabIndex = 0;
       const due = formatDueBadge(t);
       row.innerHTML = `<div class="lr-main"><div class="lr-title" style="${t.column === "done" ? "text-decoration:line-through;color:var(--muted);" : ""}">${escapeHtml(t.title)}</div><div class="lr-sub">${COLUMNS.find(c => c.id === t.column).label}</div></div>${due ? `<span class="card-due-badge${due.overdue ? " overdue" : ""}">${due.text}</span>` : ""}`;
       row.addEventListener("click", () => { closeRecordModal(); openTaskModal(t.id); });
@@ -1489,6 +1513,7 @@ function makeCard(t){
   const card = document.createElement("div");
   card.className = "card";
   card.draggable = true;
+  card.tabIndex = 0;
   card.dataset.id = t.id;
   const priority = t.priority || "none";
   let metaRowHtml = priority !== "none" ? `<span class="priority-badge priority-${priority}">${priorityLabel(priority)}</span>` : "";
@@ -1502,7 +1527,7 @@ function makeCard(t){
   const lead = taskLead(t);
   const context = [deal ? deal.title : "", lead ? contactName(lead) : ""].filter(Boolean).join(" · ");
   card.innerHTML = `
-    <span class="card-del" title="Delete task">×</span>
+    <button type="button" class="card-del" title="Delete task" aria-label="Delete task">×</button>
     <div class="card-title">${escapeHtml(t.title)}</div>
     <div class="card-meta">${escapeHtml(t.workstream)}${context ? " · " + escapeHtml(context) : ""}</div>
     <div class="card-meta-row">${metaRowHtml}</div>`;
@@ -1608,8 +1633,8 @@ function openTaskViewModal(taskId){
   const dealEl = document.getElementById("tv-deal");
   dealEl.classList.toggle("tv-empty", !deal);
   if(deal){
-    dealEl.innerHTML = `<a class="panel-link" data-always-enabled="true">${escapeHtml(deal.title)}</a>`;
-    dealEl.querySelector("a").addEventListener("click", () => { closeTaskViewModal(); openRecordModal("deal", deal.id); });
+    dealEl.innerHTML = `<button type="button" class="panel-link" data-always-enabled="true">${escapeHtml(deal.title)}</button>`;
+    dealEl.querySelector("button").addEventListener("click", () => { closeTaskViewModal(); openRecordModal("deal", deal.id); });
   } else {
     dealEl.textContent = "None";
   }
@@ -1619,8 +1644,8 @@ function openTaskViewModal(taskId){
   contactEl.classList.toggle("tv-empty", !lead);
   if(lead){
     const co = companyById(lead.companyId);
-    contactEl.innerHTML = `<a class="panel-link" data-always-enabled="true">${escapeHtml(contactName(lead))}</a>${co ? ` <span class="sub">· ${escapeHtml(co.name)}</span>` : ""}${lead.phone ? ` <span class="sub">· ${escapeHtml(lead.phone)}</span>` : ""}`;
-    contactEl.querySelector("a").addEventListener("click", () => { closeTaskViewModal(); openRecordModal("contact", lead.id); });
+    contactEl.innerHTML = `<button type="button" class="panel-link" data-always-enabled="true">${escapeHtml(contactName(lead))}</button>${co ? ` <span class="sub">· ${escapeHtml(co.name)}</span>` : ""}${lead.phone ? ` <span class="sub">· ${escapeHtml(lead.phone)}</span>` : ""}`;
+    contactEl.querySelector("button").addEventListener("click", () => { closeTaskViewModal(); openRecordModal("contact", lead.id); });
   } else {
     contactEl.textContent = "None";
   }
@@ -1826,11 +1851,12 @@ function renderNotifDropdown(){
   notificationHistory.forEach(n => {
     const item = document.createElement("div");
     item.className = "notif-item" + (n.taskId ? " clickable" : "");
+    if(n.taskId) item.tabIndex = 0;
     const when = new Date(n.createdAt);
     const timeStr = when.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " · " + when.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
     const badgeHtml = (n.priority && n.priority !== "none") ? `<span class="priority-badge priority-${n.priority}" style="margin-left:6px;">${priorityLabel(n.priority)}</span>` : "";
     item.innerHTML = `
-      <span class="notif-item-clear" title="Clear this notification" data-always-enabled="true">&times;</span>
+      <button type="button" class="notif-item-clear" title="Clear this notification" aria-label="Clear this notification" data-always-enabled="true">&times;</button>
       <div class="notif-item-title">${escapeHtml(n.title)}${badgeHtml}</div>
       <div class="notif-item-body">${escapeHtml(n.body)}</div>
       <div class="notif-item-time">${timeStr}</div>`;
@@ -1851,6 +1877,8 @@ function toggleNotifDropdown(forceState){
   if(!dropdown) return;
   const show = forceState !== undefined ? forceState : dropdown.classList.contains("hidden");
   dropdown.classList.toggle("hidden", !show);
+  const bell = document.getElementById("notif-bell-btn");
+  if(bell) bell.setAttribute("aria-expanded", show ? "true" : "false");
   if(show) renderNotifDropdown();
 }
 
@@ -1860,7 +1888,7 @@ function showToast(title, body, priority){
   const toast = document.createElement("div");
   toast.className = "toast";
   const badgeHtml = (priority && priority !== "none") ? `<span class="priority-badge priority-${priority}" style="margin-left:6px;">${priorityLabel(priority)}</span>` : "";
-  toast.innerHTML = `<span class="toast-close">&times;</span><div class="toast-title">${escapeHtml(title)}${badgeHtml}</div><div class="toast-body">${escapeHtml(body)}</div>`;
+  toast.innerHTML = `<button type="button" class="toast-close" aria-label="Dismiss">&times;</button><div class="toast-title">${escapeHtml(title)}${badgeHtml}</div><div class="toast-body">${escapeHtml(body)}</div>`;
   toast.querySelector(".toast-close").addEventListener("click", () => toast.remove());
   container.appendChild(toast);
   setTimeout(() => { if(toast.parentNode) toast.remove(); }, 6000);
@@ -1893,6 +1921,9 @@ function playBellSound(){
 /* ============================================================
    TEAM
 ============================================================ */
+// An address may wrap after its "@" on a narrow screen rather than mid-word.
+function breakableEmail(text){ return escapeHtml(text).replace(/@/g, "@<wbr>"); }
+
 function renderTeam(){
   const invitePanel = document.getElementById("invite-panel");
   if(invitePanel) invitePanel.classList.toggle("hidden", currentRole !== "owner");
@@ -1909,7 +1940,7 @@ function renderTeam(){
     const isYou = currentUser && person.id === currentUser.id;
     const displayName = person.display_name || person.email;
     const pendingTag = person.confirmed === false ? '<span class="pending-pill">Invited</span>' : "";
-    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${escapeHtml(displayName)}</span>${isYou ? '<span class="you-tag">YOU</span>' : ''}${pendingTag}<div class="sub">${escapeHtml(person.email)}</div></td><td></td><td></td>`;
+    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${breakableEmail(displayName)}</span>${isYou ? '<span class="you-tag">YOU</span>' : ''}${pendingTag}<div class="sub">${breakableEmail(person.email)}</div></td><td></td><td></td>`;
 
     const avatarEl = document.createElement("div");
     avatarEl.className = "avatar";
@@ -1948,10 +1979,12 @@ function renderTeam(){
 
     const removeTd = tr.children[3];
     if(currentRole === "owner" && person.role !== "owner" && !isYou){
-      const del = document.createElement("span");
+      const del = document.createElement("button");
+      del.type = "button";
       del.className = "btn-del";
       del.textContent = "×";
       del.title = person.confirmed === false ? "Cancel this invite" : "Remove from team";
+      del.setAttribute("aria-label", del.title + ": " + displayName);
       del.addEventListener("click", guardOwnerOnly(() => removeTeamMember(person)));
       removeTd.appendChild(del);
     }
@@ -1961,15 +1994,17 @@ function renderTeam(){
   pendingInvites.forEach(inv => {
     const tr = document.createElement("tr");
     const role = inv.role === "editor" ? "editor" : "viewer";
-    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${escapeHtml(inv.email)}</span><span class="pending-pill">Invite sent</span><div class="sub">Joins by opening the link in the email (until ${escapeHtml(fmtDay(inv.expires_at))})</div></td><td><span class="role-pill role-${role}">${role}</span></td><td></td>`;
+    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${breakableEmail(inv.email)}</span><span class="pending-pill">Invite sent</span><div class="sub">Joins by opening the link in the email (until ${escapeHtml(fmtDay(inv.expires_at))})</div></td><td><span class="role-pill role-${role}">${role}</span></td><td></td>`;
     const avatarEl = document.createElement("div");
     avatarEl.className = "avatar";
     fillAvatarEl(avatarEl, { email: inv.email });
     tr.children[0].appendChild(avatarEl);
-    const del = document.createElement("span");
+    const del = document.createElement("button");
+    del.type = "button";
     del.className = "btn-del";
     del.textContent = "×";
     del.title = "Cancel this invite";
+    del.setAttribute("aria-label", "Cancel the invite for " + inv.email);
     del.addEventListener("click", guardOwnerOnly(() => cancelInvite(inv)));
     tr.children[3].appendChild(del);
     tbody.appendChild(tr);
@@ -2188,6 +2223,72 @@ function bindEvents(){
     CRMHooks.emit("escape");
   });
   document.getElementById("sidebar-brand").addEventListener("click", () => switchTab("dashboard"));
+  bindKeyboardSupport();
+}
+
+/* ============================================================
+   KEYBOARD
+   Rows and cards that open something on click open on Enter/Space too, and
+   Tab stays inside the dialog on top (record, task, email, call, confirm)
+   until it closes; focus then goes back to where it was.
+============================================================ */
+const KEY_CLICKABLE = '.card, tr.clickable, .list-row, .tl-item.clickable, .notif-item.clickable, [role="button"]:not(button):not(a[href])';
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+
+function topOpenOverlay(){
+  let top = null, topZ = -Infinity;
+  document.querySelectorAll(".modal-overlay:not(.hidden)").forEach(o => {
+    const z = Number(window.getComputedStyle(o).zIndex) || 0;
+    if(z >= topZ){ top = o; topZ = z; }
+  });
+  return top;
+}
+
+function bindKeyboardSupport(){
+  document.addEventListener("keydown", (e) => {
+    if(e.key === "Tab"){
+      const overlay = topOpenOverlay();
+      if(!overlay) return;
+      const items = [...overlay.querySelectorAll(FOCUSABLE)].filter(el => el.getClientRects().length && !el.closest(".hidden"));
+      if(!items.length){ e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1], cur = document.activeElement;
+      if(!overlay.contains(cur)){ e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+      else if(e.shiftKey && cur === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && cur === last){ e.preventDefault(); first.focus(); }
+      return;
+    }
+    if((e.key === "Enter" || e.key === " ") && !e.defaultPrevented && e.target instanceof window.Element && e.target.matches(KEY_CLICKABLE)){
+      e.preventDefault();
+      e.target.click();
+    }
+  });
+
+  // Remember what had focus before a dialog opened, so closing it can go back there.
+  let focused = null, focusedBefore = null;
+  document.addEventListener("focusin", (e) => { focusedBefore = focused; focused = e.target; });
+  const returnTo = new WeakMap();
+  new window.MutationObserver(records => records.forEach(r => {
+    const o = r.target;
+    if(!o.classList || !o.classList.contains("modal-overlay")) return;
+    const open = !o.classList.contains("hidden");
+    if(open === !/(^|\s)hidden(\s|$)/.test(r.oldValue || "")) return;
+    if(open){
+      returnTo.set(o, focused && o.contains(focused) ? focusedBefore : focused);
+      // A dialog that didn't focus a field itself gets focus, so Tab and screen readers start inside it.
+      setTimeout(() => {
+        if(o.classList.contains("hidden") || o.contains(document.activeElement)) return;
+        const box = o.querySelector('[role="dialog"], [role="alertdialog"]') || o.firstElementChild;
+        if(!box) return;
+        if(!box.hasAttribute("tabindex")) box.setAttribute("tabindex", "-1");
+        box.focus({ preventScroll:true });
+      }, 0);
+    } else {
+      const back = returnTo.get(o);
+      returnTo.delete(o);
+      const cur = document.activeElement;
+      if(back && back.focus && document.body.contains(back) && !back.closest(".hidden") && (!cur || cur === document.body || o.contains(cur))) back.focus({ preventScroll:true });
+    }
+  })).observe(document.body, { subtree:true, attributes:true, attributeFilter:["class"], attributeOldValue:true });
 }
 
 function renderAll(){

@@ -6,6 +6,7 @@ a.dialer-call-btn{text-decoration:none;display:inline-flex;align-items:center;}
 .dialer-call-btn svg{width:14px;height:14px;}
 .dialer-call-compact{padding:4px 7px;border-radius:7px;}
 .dialer-call-compact:hover{background:var(--accent-soft);}
+@media (pointer:coarse){ .dialer-call-compact{padding:8px 10px;} }
 
 /* ---------- Call bar (fixed, above the record modal) ---------- */
 .dialer-bar{
@@ -82,7 +83,7 @@ body.dialer-on-call main{padding-bottom:110px;}
 .dialer-status{font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;text-align:right;}
 .dialer-setup{font-size:13px;margin-bottom:6px;line-height:1.5;}
 .dialer-setup code{font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:5px;}
-.dialer-panel select{font-size:13px;padding:7px 10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;max-width:280px;}
+.dialer-panel select{font-size:13px;padding:7px 10px;border:1px solid var(--line);background-color:var(--surface);color:var(--ink);border-radius:9px;max-width:280px;}
 .dialer-panel textarea{
   width:100%;font-size:13.5px;padding:8px 11px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;resize:vertical;
 }

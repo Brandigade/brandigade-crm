@@ -332,6 +332,7 @@ function renderActivityItem(a, opts){
   // From the dashboard, an item opens the record it belongs to.
   if(opts.withContext && opts.openRecordOnClick !== false && (a.dealId || a.contactId)){
     item.classList.add("clickable");
+    item.tabIndex = 0;
     item.addEventListener("click", () => a.dealId && dealById(a.dealId) ? openRecordModal("deal", a.dealId) : (contactById(a.contactId) && openRecordModal("contact", a.contactId)));
   }
   return item;
