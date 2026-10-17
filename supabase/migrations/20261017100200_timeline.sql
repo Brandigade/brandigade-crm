@@ -305,15 +305,19 @@ create trigger calls_timeline after insert or update on public.calls
 -- unless the email also involves another lead.
 create or replace function public.contacts_after_delete()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_orphans uuid[];
 begin
   if not exists (select 1 from public.workspaces where id = old.workspace_id) then return null; end if;
+  -- Two statements on purpose: a DELETE can't see rows the same statement's
+  -- CTE just updated.
   with touched as (
     update public.email_messages
        set matched_contact_ids = array_remove(matched_contact_ids, old.id)
      where workspace_id = old.workspace_id and matched_contact_ids @> array[old.id]
     returning id, matched_contact_ids)
-  delete from public.email_messages m using touched t
-   where m.id = t.id and cardinality(t.matched_contact_ids) = 0;
+  select coalesce(array_agg(id) filter (where cardinality(matched_contact_ids) = 0), '{}') into v_orphans from touched;
+  delete from public.email_messages where id = any(v_orphans);
   update public.activities
      set related_contact_ids = array_remove(related_contact_ids, old.id)
    where workspace_id = old.workspace_id and related_contact_ids @> array[old.id];
