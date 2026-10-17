@@ -111,6 +111,9 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
   ok(priv && priv.visibility === "private" && priv.owner_user_id === "u1", "private note saved as private to its author");
   ok([...d.querySelectorAll("#rm-timeline .tl-item")].some((e) => e.textContent.includes("Private thought") && e.querySelector(".tl-pill-private")), "private note is marked on the timeline");
   [...d.querySelectorAll("#rm-related .panel-link")].find((b) => b.textContent.includes("Add deal")).click();
+  const ids = [...d.querySelectorAll("[id]")].map((e) => e.id);
+  ok(ids.length === new Set(ids).size, "no duplicate element ids with the deal form open (a duplicate stopped deals from saving)");
+  ok(d.getElementById("rm-title").tagName === "INPUT", "the deal name field is the input, not the heading");
   d.getElementById("rm-title").value = "Rebrand"; d.getElementById("rm-value").value = "25000"; d.getElementById("rm-stage").value = "proposal";
   d.getElementById("rm-save-btn").click(); await sleep(600);
   d.getElementById("rm-close").click();
@@ -259,7 +262,7 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
   ok(!u5.d.getElementById("task-view-modal-overlay").classList.contains("hidden") && u5.d.getElementById("tv-title").textContent === "Legacy task", "an old reminder link (?task=<old id>) opens the task");
   const u6 = boot(raw, { connected: true, url: "https://x.test/?contact=aaaaaaaa-0000-4000-8000-000000000001", store: (() => { const s = JSON.parse(JSON.stringify(linkStore)); return s; })() });
   await sleep(800);
-  ok(!u6.d.getElementById("record-modal-overlay").classList.contains("hidden") && u6.d.getElementById("rm-title").textContent === "Linked", "?contact=<id> opens the lead record");
+  ok(!u6.d.getElementById("record-modal-overlay").classList.contains("hidden") && u6.d.getElementById("rm-heading").textContent === "Linked", "?contact=<id> opens the lead record");
 
   console.log(fail ? `FAILED (${fail})` : "ALL PASS");
   process.exit(fail ? 1 : 0);

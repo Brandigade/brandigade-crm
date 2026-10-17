@@ -1093,7 +1093,7 @@ function openRecordModal(kind, id, prefill){
   openRecord = { kind, id: record ? record.id : null, prefill: prefill || null };
   const values = record ? record : { ...def.defaults(), ...(prefill || {}) };
 
-  document.getElementById("rm-title").textContent = record ? def.title(record) : "New " + def.noun;
+  document.getElementById("rm-heading").textContent = record ? def.title(record) : "New " + def.noun;
   const form = document.getElementById("rm-form");
   form.innerHTML = def.fields.map(row => `<div class="tm-row">${row.map(f => {
     const fid = "rm-" + f.key;
