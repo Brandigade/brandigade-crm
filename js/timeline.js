@@ -138,12 +138,17 @@ async function loadTimeline(reset){
     if(error) throw error;
     if(timelineView !== view || seq !== view.seq) return; // a newer load replaced this one
     const items = (data || []).map(timelineRowToItem);
-    // Hand-logged activities not saved yet still show.
-    const unsaved = reset ? state.activities.filter(a => a.source === "manual" && activityFilterFor(view.kind, view.id)(a) &&
-      !items.some(i => i.id === a.id) && (!f.types || f.types.includes(a.type)) && snapFor(DATA_TABLE_BY_COLL.activities).get(a.id) === undefined) : [];
-    view.items = reset ? unsaved.concat(items) : view.items.concat(items.filter(i => !view.items.some(x => x.id === i.id)));
     view.done = items.length < TIMELINE_PAGE;
     const last = items[items.length - 1];
+    // Hand-logged activities this browser already has always show, saved or
+    // not: a page requested just before a save finished doesn't contain them
+    // yet, and the realtime echo that would reload the list may never come
+    // (e.g. right after sign-in, before the channel has joined).
+    const local = state.activities.filter(a => a.source === "manual" && activityFilterFor(view.kind, view.id)(a) &&
+      (!f.types || f.types.includes(a.type)) && !items.some(i => i.id === a.id) &&
+      (view.done || !last || String(a.at) >= String(last.at)));
+    const merged = reset ? local.concat(items) : view.items.concat(items);
+    view.items = merged.filter((a, i) => merged.findIndex(b => b.id === a.id) === i);
     if(last) view.cursor = { at: last.at, id: last.id };
   }catch(e){
     if(timelineView !== view || seq !== view.seq) return;
