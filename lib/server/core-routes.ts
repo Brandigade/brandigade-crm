@@ -36,8 +36,11 @@ async function teamAdmin(req: Request): Promise<Response> {
     const role = body.role === "editor" ? "editor" : "viewer";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw badRequest("A valid email is required");
 
-    // Already has an account? Add them straight to the CRM.
-    const { data: existing } = await admin.from("profiles").select("id").ilike("email", email).maybeSingle();
+    // Already has an account? Add them straight to the CRM. The address is
+    // matched literally: "_" and "%" are wildcards in ILIKE and must not let
+    // one address match someone else's account.
+    const literal = email.replace(/[\\%_]/g, (c) => "\\" + c);
+    const { data: existing } = await admin.from("profiles").select("id").ilike("email", literal).maybeSingle();
     let userId = existing?.id as string | undefined;
     let emailed = false;
     if (!userId) {

@@ -148,3 +148,28 @@ describe("team-admin", () => {
     await expect(call({ action: "remove", userId: "u1" })).rejects.toMatchObject({ status: 400 });
   });
 });
+
+describe("team-admin invite matching", () => {
+  it("treats _ and % in an address literally", async () => {
+    const seen: string[] = [];
+    const f = fakeSupabase(
+      {
+        "from:workspace_members:select": (c) => (c.filters.some((x) => x[1] === "user_id" && x[2] === "u1") ? { data: { workspace_id: "ws1", role: "owner" } } : { data: null }),
+        "from:profiles": (c) => {
+          const e = c.filters.find((x) => x[1] === "email");
+          if (e) seen.push(String(e[2]));
+          return { data: e ? null : { is_platform_admin: false } };
+        },
+        "from:workspaces": () => ({ data: { id: "ws1", status: "active" } }),
+      },
+      { getUser: () => ({ data: { user: { id: "u1", email: "o@x.co" } }, error: null }) },
+    );
+    __setAdminClientForTests(f.client);
+    const route = coreRoutes.find((r) => r.path === "/api/team-admin")!;
+    await route.handler(
+      new Request("http://x/api/team-admin", { method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify({ action: "invite", email: "a_b%c@x.co", role: "viewer" }) }),
+      { url: new URL("http://x/api/team-admin"), params: {} },
+    );
+    expect(seen).toEqual(["a\\_b\\%c@x.co"]);
+  });
+});
