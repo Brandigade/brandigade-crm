@@ -1,0 +1,72 @@
+/* Unified activity timeline (js/timeline.js). Colours come from the tokens in css/app.css. */
+.timeline-section .panel-head h4{margin:0;}
+.tl-live{display:inline-flex;align-items:center;gap:5px;font-size:11px;}
+.tl-live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);}
+
+.log-form-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.tl-private-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer;}
+.tl-private-toggle input{width:15px;height:15px;accent-color:var(--accent);}
+
+.tl-filters{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px;}
+.tl-chip{
+  font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;cursor:pointer;
+  background:var(--surface);color:var(--muted);border:1px solid var(--line);
+}
+.tl-chip:hover{color:var(--accent);border-color:var(--accent);}
+.tl-chip.active{background:var(--accent-soft);color:var(--accent);border-color:transparent;}
+
+.tl-icon.t-email{background:var(--accent-soft);color:var(--accent);}
+.tl-icon.t-task{background:var(--surface-2);color:var(--ink);}
+.tl-item.clickable{cursor:pointer;}
+.tl-item.clickable:hover .tl-title{color:var(--accent);}
+.tl-item.tl-is-private .tl-icon{box-shadow:0 0 0 2px var(--warn-soft);}
+.tl-title{display:flex;align-items:center;flex-wrap:wrap;gap:6px;word-break:break-word;}
+.tl-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap;}
+.tl-pill svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;}
+.tl-pill-private{background:var(--warn-soft);color:var(--warn);}
+.tl-pill-disposition{background:var(--good-soft);color:var(--good);}
+.tl-actions{display:flex;gap:14px;margin-top:4px;flex-wrap:wrap;}
+.tl-actions .panel-link{font-size:12px;}
+.tl-extra:empty{display:none;}
+.tl-extra{margin-top:8px;}
+.tl-state{color:var(--muted);font-size:13px;padding:8px 0;}
+.tl-error{color:var(--bad);}
+.tl-more-wrap{display:flex;justify-content:center;margin-top:8px;}
+.tl-more{font-size:12.5px;}
+
+/* Record header actions (Email, Call) and task view actions */
+.rm-actions{display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap;}
+.rm-actions:empty{display:none;}
+.task-modal-head .rm-actions + .task-modal-close{margin-left:4px;}
+.tv-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.tv-actions:empty{display:none;}
+.phone-cell .btn, .phone-cell button{margin-left:6px;vertical-align:middle;}
+.btn-sm{font-size:12px;padding:5px 10px;border-radius:8px;}
+.btn-icon{display:inline-flex;align-items:center;gap:6px;}
+.btn-icon svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+
+/* Sections that feature modules add to the Profile and Team pages */
+.feature-panel{margin-top:18px;}
+.feature-panel .panel-sub{margin-bottom:12px;}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--neutral);}
+.status-dot.ok{background:var(--good);}
+.status-dot.warn{background:var(--warn);}
+.status-dot.bad{background:var(--bad);}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line);}
+.setting-row:last-child{border-bottom:none;}
+.setting-row .setting-label{font-weight:600;font-size:13.5px;}
+.setting-row .setting-help{font-size:12px;color:var(--muted);margin-top:2px;max-width:60ch;}
+.switch{position:relative;display:inline-block;width:38px;height:22px;flex:none;}
+.switch input{opacity:0;width:0;height:0;}
+.switch .slider{position:absolute;inset:0;background:var(--line);border-radius:999px;cursor:pointer;transition:background .15s;}
+.switch .slider::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .15s;}
+.switch input:checked + .slider{background:var(--accent);}
+.switch input:checked + .slider::before{transform:translateX(16px);}
+.switch input:disabled + .slider{opacity:0.5;cursor:default;}
+.switch input:focus-visible + .slider{outline:2px solid var(--focus);outline-offset:2px;}
+
+@media (max-width:600px){
+  .rm-actions{margin-left:0;}
+  .task-modal-head{flex-wrap:wrap;}
+  .setting-row{flex-direction:column;align-items:flex-start;}
+}

@@ -1,12 +1,44 @@
 {
   "name": "brandigade-crm",
   "private": true,
-  "description": "Brandigade CRM: multi-workspace CRM on Supabase, deployed from GitHub.",
+  "type": "module",
+  "description": "Brandigade CRM: the team's shared CRM on Supabase, served by Vercel.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "node tests/test_crm.js",
-    "test:db": "tests/sql/run.sh"
+    "dev": "tsx scripts/dev-server.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "npm run test:unit && npm run test:app",
+    "test:unit": "vitest run",
+    "test:app": "node tests/app/test_crm.cjs",
+    "test:db": "bash tests/sql/run.sh",
+    "test:e2e": "playwright test",
+    "setup:cron": "tsx scripts/setup-cron.ts",
+    "setup:twilio": "tsx scripts/setup-twilio.ts",
+    "seed:local": "tsx scripts/seed-local.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
+    "libphonenumber-js": "1.13.15",
+    "nodemailer": "10.1.2",
+    "sanitize-html": "2.18.1",
+    "twilio": "6.2.0"
   },
   "devDependencies": {
-    "jsdom": "24.1.3"
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "@types/nodemailer": "8.0.2",
+    "@types/sanitize-html": "2.16.2",
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
+    "jsdom": "24.1.3",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.5"
   }
 }
