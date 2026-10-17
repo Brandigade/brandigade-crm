@@ -9,7 +9,7 @@
 .notif-banner{font-size:12.5px;padding:8px 12px;border-radius:9px;margin:0 0 10px;background:var(--surface-2);color:var(--muted);}
 .notif-banner.is-warn{background:var(--warn-soft);color:var(--warn);}
 
-.notif-select{font-size:13px;padding:6px 9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;max-width:100%;}
+.notif-select{font-size:13px;padding:6px 9px;border:1px solid var(--line);background-color:var(--surface);color:var(--ink);border-radius:8px;max-width:100%;}
 .notif-select:disabled{opacity:0.55;cursor:default;}
 .notif-tz{min-width:220px;max-width:280px;}
 .notif-hour{min-width:120px;}

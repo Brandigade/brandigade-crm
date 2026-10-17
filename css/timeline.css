@@ -4,8 +4,7 @@
 .tl-live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);}
 
 .log-form-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-.tl-private-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer;}
-.tl-private-toggle input{width:15px;height:15px;accent-color:var(--accent);}
+.tl-private-toggle{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;}
 
 .tl-filters{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px;}
 .tl-chip{
@@ -18,6 +17,7 @@
 .tl-icon.t-email{background:var(--accent-soft);color:var(--accent);}
 .tl-icon.t-task{background:var(--surface-2);color:var(--ink);}
 .tl-item.clickable{cursor:pointer;}
+.tl-item.clickable:focus-visible{outline-offset:-2px;border-radius:8px;}
 .tl-item.clickable:hover .tl-title{color:var(--accent);}
 .tl-item.tl-is-private .tl-icon{box-shadow:0 0 0 2px var(--warn-soft);}
 .tl-title{display:flex;align-items:center;flex-wrap:wrap;gap:6px;word-break:break-word;}
@@ -66,7 +66,17 @@
 .switch input:focus-visible + .slider{outline:2px solid var(--focus);outline-offset:2px;}
 
 @media (max-width:600px){
-  .rm-actions{margin-left:0;}
-  .task-modal-head{flex-wrap:wrap;}
+  /* Title and close button share the first line; Email/Call get their own below,
+     instead of wrapping and taking the close button with them. */
+  .task-modal-head{flex-wrap:wrap;row-gap:10px;}
+  .task-modal-head h3{flex:1 1 0;}
+  .rm-actions{margin-left:0;order:3;flex-basis:100%;}
+  .tv-actions:not(:empty){flex:1 1 100%;}
   .setting-row{flex-direction:column;align-items:flex-start;}
+  /* A switch is small enough to stay beside its label (level with its first line). */
+  .setting-row:has(> .switch){flex-direction:row;align-items:flex-start;}
+  .setting-row > .switch{margin-top:1px;}
+}
+@media (pointer:coarse){
+  .tl-chip{padding:6px 12px;}
 }
