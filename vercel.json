@@ -4,24 +4,50 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "regions": [
+    "hnd1"
+  ],
   "functions": {
-    "api/index.ts": { "maxDuration": 300 }
+    "api/index.ts": {
+      "maxDuration": 300
+    }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api?__path=:path*" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api?__path=:path*"
+    }
   ],
   "crons": [
-    { "path": "/api/cron/daily", "schedule": "15 4 * * *" }
+    {
+      "path": "/api/cron/daily",
+      "schedule": "15 4 * * *"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" },
-        { "key": "Permissions-Policy", "value": "microphone=(self), camera=(), geolocation=(), payment=()" },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "microphone=(self), camera=(), geolocation=(), payment=()"
+        },
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https://*.supabase.co https://sdk.twilio.com https://media.twiliocdn.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.twilio.com wss://*.twilio.com; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
@@ -30,7 +56,12 @@
     },
     {
       "source": "/config.js",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
     }
   ]
 }
