@@ -68,6 +68,8 @@ window.DialerUI = window.DialerUI || {};
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const telHref = (n) => "tel:" + String(n || "").replace(/[^0-9+*#,;]/g, "");
   const firstName = (c) => (c && (c.firstName || contactName(c))) || "";
+  // A call that just ended still shows "Call ended" for a moment; it doesn't block the next one.
+  const onCall = () => !!(D.active && !D.active.finished);
   function el(tag, cls, html){
     const e = document.createElement(tag);
     if(cls) e.className = cls;
@@ -322,7 +324,7 @@ window.DialerUI = window.DialerUI || {};
   }
 
   async function startCall(target){
-    if(D.active || D.incoming){ notify("Already on a call", "Finish the current call first."); return; }
+    if(onCall() || D.incoming){ notify("Already on a call", "Finish the current call first."); return; }
     const s = newSession("outbound", target);
     D.active = s;
     renderBar();
@@ -506,11 +508,12 @@ window.DialerUI = window.DialerUI || {};
       from: (call.parameters && call.parameters.From) || "",
     };
     if(!canCall()){ try{ call.reject(); }catch(e){} return; }
-    if(D.active || D.incoming){
+    if(onCall() || D.incoming){
       try{ call.reject(); }catch(e){}
       notify("Missed call", `${callerLabel(info)} called while you were on another call.`);
       return;
     }
+    if(D.active && D.active.finished){ D.active = null; renderBar(); } // clear a call that just ended
     D.incoming = info;
     const gone = () => { if(D.incoming === info){ D.incoming = null; renderIncoming(); } };
     call.on("cancel", () => { if(D.incoming === info){ gone(); notify("Missed call", `${callerLabel(info)} stopped ringing (a teammate answered or the caller hung up).`); } });

@@ -46,6 +46,11 @@ describe("X-Twilio-Signature", () => {
     await expect(readTwilioWebhook(req)).rejects.toMatchObject({ status: 403 });
   });
 
+  it("rejects a correctly signed webhook for another Twilio account", async () => {
+    const req = twilioRequest("/api/voice/outbound", { ...params, AccountSid: "AC" + "f".repeat(32) });
+    await expect(readTwilioWebhook(req)).rejects.toMatchObject({ status: 403 });
+  });
+
   it("rejects a missing header", async () => {
     await expect(readTwilioWebhook(twilioRequest("/api/voice/outbound", params, { noSignature: true }))).rejects.toMatchObject({ status: 403 });
   });

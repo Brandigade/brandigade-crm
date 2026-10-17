@@ -34,7 +34,7 @@ function store(settings: Record<string, unknown> = {}) {
       { id: U.owner, email: "owner@x.co", display_name: "Olivia", avatar_data: null, is_platform_admin: false, created_at: t },
       { id: U.viewer, email: "viewer@x.co", display_name: "Vera", avatar_data: null, is_platform_admin: false, created_at: t },
     ],
-    workspaces: [{ id: IDS.ws, name: "Brandigade", status: "active", created_at: t, settings: { seeded: true, timezone: "UTC", currency: "USD", ...settings } }],
+    workspaces: [{ id: IDS.ws, name: "Brandigade", status: "active", created_at: t, settings: { seeded: true, timezone: "UTC", currency: "USD", ...settings } as Record<string, any> }],
     workspace_members: [
       { workspace_id: IDS.ws, user_id: U.owner, role: "owner", invited: false, created_at: t },
       { workspace_id: IDS.ws, user_id: U.viewer, role: "viewer", invited: false, created_at: t },
@@ -76,7 +76,7 @@ const fakeTwilioSource = `
 
 interface Boot {
   w: any;
-  d: Document;
+  d: any;
   s: ReturnType<typeof store>;
   api: { path: string; method: string; body: any }[];
   rpc: { name: string; args: any }[];
@@ -151,7 +151,7 @@ function boot(o: { calling?: boolean; role?: "owner" | "viewer"; settings?: Reco
   return { w: dom.window, d: dom.window.document, s, api: apiCalls, rpc: rpcCalls, mic };
 }
 
-async function until(fn: () => unknown, ms = 3000) {
+async function until(fn: () => unknown, ms = 3000): Promise<any> {
   const end = Date.now() + ms;
   for (;;) {
     const v = fn();
@@ -161,9 +161,9 @@ async function until(fn: () => unknown, ms = 3000) {
   }
 }
 const ready = (b: Boot) => until(() => b.d.getElementById("auth-screen")!.classList.contains("hidden") && b.w.eval("typeof currentWorkspace !== 'undefined' && !!currentWorkspace"));
-const nav = (b: Boot, tab: string) => (b.d.querySelector(`.nav-item[data-tab="${tab}"]`) as HTMLElement).click();
-const row = (b: Boot, id: string) => b.d.querySelector(`#contacts-tbody tr[data-id="${id}"]`)!;
-const visible = (el: Element | null) => !!el && !el.classList.contains("hidden");
+const nav = (b: Boot, tab: string) => (b.d.querySelector(`.nav-item[data-tab="${tab}"]`) as any).click();
+const row = (b: Boot, id: string): any => b.d.querySelector(`#contacts-tbody tr[data-id="${id}"]`);
+const visible = (el: any) => !!el && !el.classList.contains("hidden");
 const device = (b: Boot) => b.w.Twilio.Device.instances[b.w.Twilio.Device.instances.length - 1];
 
 describe("dialer UI with calling set up", () => {
@@ -177,7 +177,7 @@ describe("dialer UI with calling set up", () => {
 
     nav(b, "contacts");
     expect(row(b, IDS.nophone).querySelector(".dialer-call-btn")).toBeNull();
-    const btn = row(b, IDS.maya).querySelector("button.dialer-call-btn") as HTMLButtonElement;
+    const btn = row(b, IDS.maya).querySelector("button.dialer-call-btn") as any;
     expect(btn).toBeTruthy();
     btn.click();
     expect(b.d.getElementById("record-modal-overlay")!.classList.contains("hidden")).toBe(true); // the row didn't open
@@ -189,47 +189,52 @@ describe("dialer UI with calling set up", () => {
 
     call.emit("ringing");
     expect(bar.querySelector(".dialer-state")!.textContent).toBe("Ringing…");
-    expect((bar.querySelector(".dialer-mute") as HTMLButtonElement).disabled).toBe(true);
+    expect((bar.querySelector(".dialer-mute") as any).disabled).toBe(true);
     call.parameters.CallSid = CALL_SID;
     call.emit("accept", call);
     expect(bar.querySelector(".dialer-state")!.textContent).toBe("0:00");
-    (bar.querySelector(".dialer-mute") as HTMLButtonElement).click();
+    (bar.querySelector(".dialer-mute") as any).click();
     expect(call.muted).toBe(true);
     expect(bar.querySelector(".dialer-mute")!.textContent).toContain("Unmute");
-    (bar.querySelector(".dialer-keypad-btn") as HTMLButtonElement).click();
+    (bar.querySelector(".dialer-keypad-btn") as any).click();
     expect(visible(bar.querySelector(".dialer-keypad"))).toBe(true);
-    (bar.querySelector('.dialer-key[data-key="5"]') as HTMLButtonElement).click();
+    (bar.querySelector('.dialer-key[data-key="5"]') as any).click();
     b.d.dispatchEvent(new b.w.KeyboardEvent("keydown", { key: "#", bubbles: true }));
     expect(call.digits).toEqual(["5", "#"]);
 
     // The server created the calls row; hanging up asks for the outcome.
     b.s.calls.push({ id: IDS.call, workspace_id: IDS.ws, provider_call_sid: CALL_SID, direction: "outbound", contact_id: IDS.maya, status: "completed", duration_seconds: 63 });
-    (bar.querySelector(".dialer-hangup") as HTMLButtonElement).click();
+    (bar.querySelector(".dialer-hangup") as any).click();
     expect(bar.querySelector(".dialer-state")!.textContent).toContain("Call ended");
     const modal = await until(() => (visible(b.d.getElementById("dialer-disposition")) ? b.d.getElementById("dialer-disposition") : null));
     await until(() => modal!.querySelector(".dialer-modal-sub")!.textContent!.includes("1m 03s"));
-    const outcome = modal!.querySelector("#dialer-disp-outcome") as HTMLSelectElement;
+    const outcome = modal!.querySelector("#dialer-disp-outcome") as any;
     expect(outcome.value).toBe("connected");
     expect([...outcome.options].map((x) => x.value)).toEqual(["", "connected", "left_voicemail", "no_answer", "busy", "wrong_number", "not_interested", "callback_requested", "other"]);
-    (modal!.querySelector("#dialer-disp-notes") as HTMLTextAreaElement).value = "Wants a quote <b>Friday</b>";
-    (modal!.querySelector("[data-save]") as HTMLButtonElement).click();
+    (modal!.querySelector("#dialer-disp-notes") as any).value = "Wants a quote <b>Friday</b>";
+    (modal!.querySelector("[data-save]") as any).click();
     await until(() => !visible(modal));
     expect(b.rpc.find((r) => r.name === "set_call_disposition")!.args).toEqual({ p_call: IDS.call, p_disposition: "connected", p_notes: "Wants a quote <b>Friday</b>" });
     expect(b.s.calls[0]).toMatchObject({ disposition: "connected" });
+
+    // The ended call's bar is still fading out: a new incoming call must still ring.
+    expect(visible(bar)).toBe(true);
+    device(b).emit("incoming", new b.w.Twilio.FakeCall({ From: "+14155550143" }, { callId: IDS.call, contactId: IDS.maya }));
+    expect(visible(b.d.getElementById("dialer-incoming"))).toBe(true);
   });
 
   it("calls from the record header, deals and tasks, and passes their ids", async () => {
     const b = boot({ calling: true });
     await ready(b);
     b.w.eval(`openRecordModal("deal", "${IDS.deal}")`);
-    const dealBtn = b.d.querySelector("#rm-actions .dialer-call-btn") as HTMLElement;
+    const dealBtn = b.d.querySelector("#rm-actions .dialer-call-btn") as any;
     expect(dealBtn.textContent).toBe("Call Maya");
     b.w.eval(`openRecordModal("company", "${IDS.co}")`);
     expect(b.d.querySelector("#rm-actions .dialer-call-btn")).toBeTruthy();
     b.w.eval(`openRecordModal("contact", "${IDS.nophone}")`);
     expect(b.d.querySelector("#rm-actions .dialer-call-btn")).toBeNull(); // no number anywhere
     b.w.eval(`openRecordModal("deal", "${IDS.deal}")`);
-    (b.d.querySelector("#rm-actions .dialer-call-btn") as HTMLElement).click();
+    (b.d.querySelector("#rm-actions .dialer-call-btn") as any).click();
     const call = await until(() => device(b) && device(b).connects[0]);
     expect(call.connectParams).toEqual({ contactId: IDS.maya, dealId: IDS.deal });
   });
@@ -245,7 +250,7 @@ describe("dialer UI with calling set up", () => {
     const text = panel.textContent!;
     for (const part of ["Maya Rivera", "+14155550143", "Cedar & Crumb", "Customer", "Wholesale rebrand", "$25,000", "Recording"]) expect(text).toContain(part);
     expect(text).toContain("Last activity");
-    (panel.querySelector('[data-act="accept"]') as HTMLButtonElement).click();
+    (panel.querySelector('[data-act="accept"]') as any).click();
     await until(() => incoming.accepted);
     expect(visible(panel)).toBe(false);
     const bar = b.d.getElementById("dialer-bar")!;
@@ -267,7 +272,7 @@ describe("dialer UI with calling set up", () => {
     expect(panel.textContent).toContain("Unknown caller");
     expect(panel.textContent).toContain("isn't saved on any lead");
     expect(panel.querySelector('[data-act="add"]')).toBeTruthy();
-    (panel.querySelector('[data-act="decline"]') as HTMLButtonElement).click();
+    (panel.querySelector('[data-act="decline"]') as any).click();
     expect(unknown.rejected).toBe(true);
     expect(visible(panel)).toBe(false);
 
@@ -290,7 +295,7 @@ describe("dialer UI with calling set up", () => {
     const box = b.d.createElement("div");
     b.d.body.appendChild(box);
     await b.w.DialerUI.playRecording("ok", box);
-    const audio = box.querySelector("audio") as HTMLAudioElement;
+    const audio = box.querySelector("audio") as any;
     expect(audio.getAttribute("src")).toContain("/storage/v1/object/sign/");
     expect(audio.controls).toBe(true);
     await b.w.DialerUI.playRecording("ok", box); // toggles closed
@@ -309,7 +314,7 @@ describe("dialer UI with calling set up", () => {
     nav(b, "profile");
     const panel = b.d.getElementById("dialer-profile-panel")!;
     expect(panel.textContent).toContain("Ready: calls ring in this browser");
-    const sw = panel.querySelector("#dialer-receive-inbound") as HTMLInputElement;
+    const sw = panel.querySelector("#dialer-receive-inbound") as any;
     expect(sw.checked).toBe(true);
     sw.checked = false;
     sw.dispatchEvent(new b.w.Event("change"));
@@ -327,20 +332,20 @@ describe("dialer UI with calling set up", () => {
     expect(b.d.querySelectorAll("#dialer-team-panel")).toHaveLength(1);
     const panel = b.d.getElementById("dialer-team-panel")!;
     await until(() => panel.textContent!.includes("+14155550100"));
-    const rec = panel.querySelector("#dialer-rec-switch") as HTMLInputElement;
+    const rec = panel.querySelector("#dialer-rec-switch") as any;
     rec.checked = true;
     rec.dispatchEvent(new b.w.Event("change"));
     await until(() => visible(b.d.getElementById("confirm-overlay")));
     expect(b.d.getElementById("confirm-message")!.textContent).toContain("consent");
-    (b.d.getElementById("confirm-ok") as HTMLButtonElement).click();
+    (b.d.getElementById("confirm-ok") as any).click();
     await until(() => b.s.workspaces[0].settings.callRecording === "on");
-    const ann = panel.querySelector("#dialer-rec-announcement") as HTMLTextAreaElement;
+    const ann = panel.querySelector("#dialer-rec-announcement") as any;
     ann.value = "  Brandigade records calls  for training. ";
     ann.dispatchEvent(new b.w.Event("change"));
-    const access = panel.querySelector("#dialer-rec-access") as HTMLSelectElement;
+    const access = panel.querySelector("#dialer-rec-access") as any;
     access.value = "owner";
     access.dispatchEvent(new b.w.Event("change"));
-    const country = panel.querySelector("#dialer-country") as HTMLSelectElement;
+    const country = panel.querySelector("#dialer-country") as any;
     country.value = "GB";
     country.dispatchEvent(new b.w.Event("change"));
     await until(() => b.s.workspaces[0].settings.defaultCountry === "GB");
@@ -355,15 +360,15 @@ describe("dialer UI without calling set up", () => {
     const b = boot({ calling: false });
     await ready(b);
     nav(b, "contacts");
-    const link = row(b, IDS.maya).querySelector("a.dialer-call-btn") as HTMLAnchorElement;
+    const link = row(b, IDS.maya).querySelector("a.dialer-call-btn") as any;
     expect(link.getAttribute("href")).toBe("tel:+14155550143");
     expect(b.w.Twilio).toBeUndefined(); // the SDK is never loaded
     link.click();
     const modal = await until(() => (visible(b.d.getElementById("dialer-log")) ? b.d.getElementById("dialer-log") : null));
     expect(modal!.textContent).toContain("Automatic call logging and recording start once calling is set up");
-    (modal!.querySelector("#dialer-log-outcome") as HTMLSelectElement).value = "no_answer";
-    (modal!.querySelector("#dialer-log-notes") as HTMLTextAreaElement).value = "Rang out";
-    (modal!.querySelector("[data-save]") as HTMLButtonElement).click();
+    (modal!.querySelector("#dialer-log-outcome") as any).value = "no_answer";
+    (modal!.querySelector("#dialer-log-notes") as any).value = "Rang out";
+    (modal!.querySelector("[data-save]") as any).click();
     await until(() => b.s.activities.some((a: any) => a.type === "call"));
     expect(b.s.activities.find((a: any) => a.type === "call")).toMatchObject({ source: "manual", subject: "Call with Maya Rivera · No answer", body: "Rang out", contact_id: IDS.maya, company_id: IDS.co });
     expect(b.api.some((c) => c.path === "/voice/token")).toBe(false);
@@ -377,7 +382,7 @@ describe("dialer UI without calling set up", () => {
     const b = boot({ calling: true, role: "viewer" });
     await ready(b);
     nav(b, "contacts");
-    const link = row(b, IDS.maya).querySelector("a.dialer-call-btn") as HTMLAnchorElement;
+    const link = row(b, IDS.maya).querySelector("a.dialer-call-btn") as any;
     expect(link).toBeTruthy();
     expect(link.dataset.alwaysEnabled).toBe("true");
     link.click();

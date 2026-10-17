@@ -27,5 +27,8 @@ export async function readTwilioWebhook(req: Request): Promise<Record<string, st
     console.warn("Rejected a voice webhook with an invalid signature for", url.split("?")[0]);
     throw forbidden("Invalid Twilio signature");
   }
+  // Belt and braces: a validly signed request must also be for our account.
+  const accountSid = getEnv("TWILIO_ACCOUNT_SID");
+  if (accountSid && params.AccountSid && params.AccountSid !== accountSid) throw forbidden("Webhook for another Twilio account");
   return params;
 }
