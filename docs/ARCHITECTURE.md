@@ -7,22 +7,24 @@ changing anything; when you change a convention, change this file too.
 
 | Piece | Where | Notes |
 |---|---|---|
-| Front end | `index.html`, `css/*.css`, `js/*.js` — static files served by Vercel | Vanilla JS, no framework, no bundler. Classic `<script>` files sharing one global scope, loaded in the order in `index.html`. |
-| Server | `api/index.ts` (one Vercel Function) → `lib/server/**` | Node.js 24, TypeScript, Web-standard `Request`/`Response`. `vercel.json` rewrites `/api/*` to it; `lib/server/routes.ts` routes by path. |
+| Front end | `index.html`, `css/*.css`, `js/*.js` — static files on GitHub Pages (`https://brandigade.github.io/brandigade-crm/`) | Vanilla JS, no framework, no bundler. Classic `<script>` files sharing one global scope, loaded in the order in `index.html`. `config.js` (built) tells it the Supabase project and the server's address (`apiBase`). |
+| Server | One Supabase Edge Function, `api` (`supabase/functions/api`) → `lib/server/**` | TypeScript, Web-standard `Request`/`Response`, written for Node and packaged for Deno by `npm run build:edge` (`scripts/build-edge.mjs`). Public address `https://<ref>.supabase.co/functions/v1/api/*` (`SERVER_URL` + `/api`); `lib/server/routes.ts` routes by path. Locally `scripts/dev-server.ts` runs the same code on `/api`. JWT checks are off at the gateway: every route checks its caller itself. |
 | Database, auth, realtime, file storage | Supabase (project `wqdysxpormmxxaakfgtu`) | Postgres with row level security on every table. Schema only via `supabase/migrations/`. |
-| Scheduler | Supabase `pg_cron` → `POST /api/cron/tick` every minute | Vercel Hobby cron can only run once a day, so the minute-level schedule lives in Supabase (migration `20261017100300_scheduler.sql`). Vercel's daily cron (`/api/cron/daily`) is a backstop + housekeeping. |
+| Scheduler | Supabase `pg_cron` → `POST /api/cron/tick` every minute, `GET /api/cron/daily` once a day | Migrations `20261017100300_scheduler.sql` and `20261020100000_scheduler_daily.sql`. The server's address and `CRON_SECRET` are in Supabase Vault (`npm run setup:cron`, run by the deploy workflow). |
+| Deploys | `.github/workflows/deploy.yml` | Tests on every push and pull request. On `main`: settings from the GitHub secrets → Edge Function, deploy the function, `supabase db push`, scheduler, then the site to GitHub Pages (`scripts/deploy-server.sh`). |
 
 ### Why these choices (short)
 * **Records moved out of the JSON document** (`workspace_state.data`) into real tables. Saving rewrote the whole document, so background writers (email sync, call webhooks) would have been overwritten by the next browser save, and RLS had nothing to protect per record. The old document is kept, read-only, as a backup.
 * **The UI kept its in-memory `state`.** `js/data.js` maps it to the tables and saves only changed records, so the existing screens barely changed.
-* **One server runtime.** The old Supabase Edge Functions (`team-admin`, `send-due-task-emails`) are replaced by Vercel routes; the Edge Function source stays in `supabase/functions/` only for the old site until cutover.
-* **Vercel Hobby limits respected:** functions ≤ 300 s, request/response ≤ 4.5 MB, cron ≥ 1/day. Long or large work is chunked through the job queue; recordings are served from Supabase Storage via signed URLs, never streamed through a function.
+* **One server, on what Brandigade already uses.** The old Edge Functions (`team-admin`, `send-due-task-emails`) are replaced by the routes of the one `api` function. GitHub Pages + Supabase keep hosting free; no other provider is needed.
+* **Edge Function limits respected:** about 2 s of CPU and 150 s per request, no outgoing SMTP on ports 25/587 (Gmail uses 465). Background work is chunked per scheduler tick (`ON_EDGE` in `lib/server/env.ts` lowers the batch sizes; scans resume on the next tick); recordings are served from Supabase Storage via signed URLs, never streamed through the function.
+* **Two addresses.** The site and the server are on different origins, so the server answers CORS for `APP_URL`'s origin only (bearer tokens, no cookies), and the mailbox sign-in sets its cookie from a top-level visit to `/api/email/oauth/launch` on the server's own address.
 
 ## 2. Ownership and boundaries
 
 | Area | Owner | Files |
 |---|---|---|
-| Schema, RLS, timeline triggers, core data layer, timeline UI, core screens, system status, server core | **Integrator** | `supabase/migrations/**`, `js/app.js`, `js/data.js`, `js/demo.js`, `js/timeline.js`, `js/system.js`, `css/app.css`, `css/timeline.css`, `index.html`, `lib/server/*.ts` (top level), `api/**`, `vercel.json`, `package.json` |
+| Schema, RLS, timeline triggers, core data layer, timeline UI, core screens, system status, server core | **Integrator** | `supabase/migrations/**`, `js/app.js`, `js/data.js`, `js/demo.js`, `js/timeline.js`, `js/system.js`, `css/app.css`, `css/timeline.css`, `index.html`, `lib/server/*.ts` (top level), `supabase/functions/**`, `scripts/**`, `.github/workflows/**`, `package.json` |
 | Email (Gmail + Outlook) | **Email session** | `lib/server/email/**`, `js/email.js`, `css/email.css`, `tests/unit/email/**` |
 | Task notifications | **Notifications session** | `lib/server/notifications/**`, `js/notifications.js`, `css/notifications.css`, `tests/unit/notifications/**` |
 | Calling (Twilio) | **Dialer session** | `lib/server/voice/**`, `js/dialer.js`, `css/dialer.css`, `tests/unit/voice/**`, `scripts/setup-twilio.ts` |
@@ -124,7 +126,7 @@ Every notification handler re-checks the task, person and preferences when it ru
 * Colours only from the CSS tokens in `css/app.css` (`--surface`, `--ink`, `--muted`, `--line`, `--accent`, `--good`, `--warn`, `--bad`, ...). Reusable bits in `css/timeline.css`: `.feature-panel`, `.setting-row`, `.switch`, `.status-dot.ok|warn|bad`, `.btn-sm`, `.btn-icon`, `.tl-pill`.
 * Shared controls (`css/app.css`): every `<select>` draws the `--select-chevron` token itself, so give selects `background-color`, never the `background` shorthand. Close/remove buttons are `<button class="task-modal-close" aria-label="Close">` (also `.card-del`, `.btn-del`, `.notif-item-clear`, `.toast-close`): the `--icon-close` mask replaces the `×` glyph. Anything clickable is a `<button>` (`.link-btn` or `.panel-link` when it should read as a link), never an `<a>` without `href` or a bare `<span>`. Rows and cards that open something get `tabIndex = 0`; `js/app.js` then opens them on Enter/Space. Any visible `.modal-overlay` keeps Tab inside it and returns focus to the opener when it hides, with no extra code needed. Wide tables get `.table-rows-nowrap` (one line per row, name column pinned, sideways scroll).
 * Every integration screen needs loading, error, empty and "not set up" states, and works on a phone-width screen.
-* The CSP is in `vercel.json` (the dev server applies it too): scripts only from `'self'` and `https://cdn.jsdelivr.net` (pin exact versions), no inline scripts. If you need another origin, say so in your report.
+* The CSP is built in `scripts/env.mjs` (`contentSecurityPolicy()`): the build puts it in a `<meta>` tag (GitHub Pages can't send headers) and the dev server sends it as a header. Scripts only from `'self'` and the two pinned `https://cdn.jsdelivr.net` packages, no inline scripts. `js/frame-guard.js` keeps the page out of other sites' frames. If you need another origin, say so in your report.
 * Demo mode (`js/demo.js`) has no server: `api()` returns `{ accounts: [] }` for `/email/accounts` and throws `status 501` for anything else. Show a short "not available in the demo" message in that case.
 
 ### Invites

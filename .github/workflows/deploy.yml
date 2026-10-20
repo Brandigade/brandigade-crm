@@ -1,0 +1,134 @@
+# Every pull request and push: the tests.
+# Every push to main, or "Run workflow" on the Actions tab: update the
+# database and the server (Supabase), then publish the site (GitHub Pages).
+#
+# All settings are repository secrets: Settings -> Secrets and variables ->
+# Actions. To change one, edit it there, then run this workflow again
+# (Actions -> Test and deploy -> Run workflow). SETUP.md lists them.
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'wqdysxpormmxxaakfgtu' }}
+  SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://wqdysxpormmxxaakfgtu.supabase.co' }}
+  # The public anon key (safe to publish: it is in the site's config.js anyway).
+  SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxZHlzeHBvcm1teHhhYWtmZ3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0ODMxNTcsImV4cCI6MjEwNzA1OTE1N30.OAqkIeHV60fHjcMxedzCDQkqzU1JLBUZxBN6YwpGf00' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Type check
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm run test:unit
+      - name: App tests
+        run: npm run test:app
+      - name: Database and security tests
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: npm run test:db
+      - name: Builds
+        run: |
+          npm run build
+          npm run build:edge
+
+  deploy-server:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      APP_URL: ${{ vars.APP_URL }}
+      # Task emails and invites (one of the two senders)
+      GMAIL_USER: ${{ vars.GMAIL_USER || secrets.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      NOTIFICATION_FROM_EMAIL: ${{ vars.NOTIFICATION_FROM_EMAIL || vars.REMINDER_FROM_EMAIL }}
+      # Gmail and Outlook mailboxes
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+      MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+      MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
+      # Calling
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      TWILIO_API_KEY_SID: ${{ secrets.TWILIO_API_KEY_SID }}
+      TWILIO_API_KEY_SECRET: ${{ secrets.TWILIO_API_KEY_SECRET }}
+      TWILIO_CALLER_ID: ${{ secrets.TWILIO_CALLER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the Supabase secrets
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "::error::The SUPABASE_ACCESS_TOKEN and SUPABASE_DB_PASSWORD secrets are needed to deploy. See SETUP.md."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.113.0
+      - name: Update the database and the server
+        run: bash scripts/deploy-server.sh
+
+  deploy-site:
+    needs: deploy-server
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build the site
+        env:
+          SERVER_URL: https://${{ vars.SUPABASE_PROJECT_REF || 'wqdysxpormmxxaakfgtu' }}.supabase.co/functions/v1
+        run: node scripts/build.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

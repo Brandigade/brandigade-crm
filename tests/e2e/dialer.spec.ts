@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { admin, gotoTab, loginToCrm } from "./helpers.js";
+import { admin, api, gotoTab, loginToCrm } from "./helpers.js";
 
 // Calling against the real front end and the LOCAL Supabase stack. There is no
 // Twilio account, so:
@@ -41,7 +41,7 @@ const FAKE_SDK = `
 const TEL_GUARD = `window.addEventListener("click", (e) => { if (e.target.closest && e.target.closest('a[href^="tel:"]')) e.preventDefault(); }, true);`;
 
 async function callingConfigured(page: Page) {
-  const res = await page.request.get("/api/config");
+  const res = await page.request.get(api("/config"));
   return !!(await res.json()).features?.calling;
 }
 

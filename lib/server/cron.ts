@@ -1,4 +1,4 @@
-import { getEnv } from "./env.js";
+import { ON_EDGE, getEnv } from "./env.js";
 import { bearerToken, errorSummary, unauthorized } from "./http.js";
 import { safeEqual } from "./crypto.js";
 import { adminClient } from "./supabase.js";
@@ -8,12 +8,12 @@ import { notificationJobHandlers, scheduleNotifications } from "./notifications/
 import { voiceJobHandlers } from "./voice/worker.js";
 
 // One scheduler "tick". Supabase pg_cron calls POST /api/cron/tick every
-// minute (migration 20261017100300_scheduler.sql); Vercel's daily cron calls
-// GET /api/cron/daily as a backstop. Each step is isolated so one failing
+// minute (migration 20261017100300_scheduler.sql) and GET /api/cron/daily once
+// a day for housekeeping (20261020100000_scheduler_daily.sql). Each step is isolated so one failing
 // integration never stops the others, and every step is safe to run twice at
 // the same time (leases and dedupe keys in the database).
 
-/** Checks the shared secret sent by pg_cron / Vercel Cron. */
+/** Checks the shared secret pg_cron sends. */
 export function requireCronSecret(req: Request) {
   const expected = getEnv("CRON_SECRET");
   const got = bearerToken(req);
@@ -49,9 +49,9 @@ export async function runTick(opts: { budgetMs?: number; now?: Date } = {}) {
   result.notificationJobs = await step("notificationJobs", () => runJobs(notificationJobHandlers, { deadline: started + Math.floor(budget * 0.3) }));
   // Call recordings next, also with their own share, so they are copied into
   // the CRM minutes after a call even while a big import is being backfilled.
-  result.voiceJobs = await step("voiceJobs", () => runJobs(voiceJobHandlers, { deadline: started + Math.floor(budget * 0.4), maxJobs: 25 }));
+  result.voiceJobs = await step("voiceJobs", () => runJobs(voiceJobHandlers, { deadline: started + Math.floor(budget * 0.4), maxJobs: ON_EDGE ? 5 : 25 }));
   // Then mailbox backfills, a bounded number per tick.
-  result.jobs = await step("jobs", () => runJobs(emailJobHandlers, { deadline: started + Math.floor(budget * 0.6), maxJobs: 25 }));
+  result.jobs = await step("jobs", () => runJobs(emailJobHandlers, { deadline: started + Math.floor(budget * 0.6), maxJobs: ON_EDGE ? 3 : 25 }));
   // Pull new mail from connected mailboxes.
   result.emailSync = await step("emailSync", () => syncDueEmailAccounts({ deadline }));
   result.reaped = await step("reap", async () => {
@@ -63,7 +63,7 @@ export async function runTick(opts: { budgetMs?: number; now?: Date } = {}) {
   return result;
 }
 
-/** Daily housekeeping (Vercel cron): prune old queue rows, expired OAuth states and long-expired invites. */
+/** Daily housekeeping (pg_cron job "crm-daily"): prune old queue rows, expired OAuth states and long-expired invites. */
 export async function runDaily() {
   const db = adminClient();
   const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
@@ -86,6 +86,5 @@ export async function runDaily() {
     if (error) throw error;
     return count;
   });
-  const tick = await step("tick", () => runTick({ budgetMs: 200_000 }));
-  return { pruned, states, invites, tick };
+  return { pruned, states, invites };
 }

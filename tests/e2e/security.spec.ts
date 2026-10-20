@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { admin, cleanup, gotoTab, login, loginToCrm, tag, userDb } from "./helpers.js";
+import { admin, api, cleanup, gotoTab, login, loginToCrm, tag, userDb } from "./helpers.js";
 
 // Permissions are enforced by the database and the server, not only by the UI:
 // these tests go around the UI on purpose.
@@ -56,23 +56,23 @@ test.describe("roles and security", () => {
   });
 
   test("server routes check who is calling", async ({ request }) => {
-    expect((await request.post("/api/cron/tick")).status()).toBe(401);
-    expect((await request.post("/api/cron/tick", { headers: { authorization: "Bearer wrong" } })).status()).toBe(401);
-    expect((await request.get("/api/cron/daily")).status()).toBe(401);
-    expect((await request.post("/api/team-admin", { data: { action: "invite", email: "x@y.co" } })).status()).toBe(401);
-    expect((await request.post("/api/team-admin", { headers: { authorization: "Bearer not-a-jwt" }, data: {} })).status()).toBe(401);
+    expect((await request.post(api("/cron/tick"))).status()).toBe(401);
+    expect((await request.post(api("/cron/tick"), { headers: { authorization: "Bearer wrong" } })).status()).toBe(401);
+    expect((await request.get(api("/cron/daily"))).status()).toBe(401);
+    expect((await request.post(api("/team-admin"), { data: { action: "invite", email: "x@y.co" } })).status()).toBe(401);
+    expect((await request.post(api("/team-admin"), { headers: { authorization: "Bearer not-a-jwt" }, data: {} })).status()).toBe(401);
 
     const { token } = await userDb("editor");
     const asEditor = { authorization: `Bearer ${token}` };
-    expect((await request.post("/api/team-admin", { headers: asEditor, data: { action: "invite", email: "x@y.co", role: "editor" } })).status()).toBe(403);
-    expect((await request.get("/api/system/status", { headers: asEditor })).status()).toBe(403);
-    const cfg = await (await request.get("/api/config")).json();
+    expect((await request.post(api("/team-admin"), { headers: asEditor, data: { action: "invite", email: "x@y.co", role: "editor" } })).status()).toBe(403);
+    expect((await request.get(api("/system/status"), { headers: asEditor })).status()).toBe(403);
+    const cfg = await (await request.get(api("/config"))).json();
     expect(Object.keys(cfg.features).sort()).toEqual(["calling", "gmail", "notifications", "outlook"]);
     expect(JSON.stringify(cfg)).not.toMatch(/key|secret|token/i);
   });
 
   test("the cron endpoint runs with the right secret", async ({ request }) => {
-    const res = await request.post("/api/cron/tick", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
+    const res = await request.post(api("/cron/tick"), { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body).toHaveProperty("jobs");

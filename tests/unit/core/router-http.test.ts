@@ -14,9 +14,25 @@ describe("router", () => {
     const r = await handle(new Request("http://x/api/things/a%20b"));
     expect(await r.json()).toEqual({ id: "a b" });
   });
-  it("works through Vercel's rewrite (?__path=)", async () => {
-    const r = await handle(new Request("http://x/api?__path=things/42"));
-    expect(await r.json()).toEqual({ id: "42" });
+  it("lets only the CRM's own site call it from the browser (CORS)", async () => {
+    const before = process.env.APP_URL;
+    process.env.APP_URL = "https://brandigade.github.io/brandigade-crm";
+    try {
+      const pre = await handle(new Request("http://x/api/things/1", { method: "OPTIONS", headers: { origin: "https://brandigade.github.io" } }));
+      expect(pre.status).toBe(204);
+      expect(pre.headers.get("access-control-allow-origin")).toBe("https://brandigade.github.io");
+      expect(pre.headers.get("access-control-allow-headers")).toContain("authorization");
+      const ok = await handle(new Request("http://x/api/things/1", { headers: { origin: "https://brandigade.github.io" } }));
+      expect(ok.headers.get("access-control-allow-origin")).toBe("https://brandigade.github.io");
+      expect(await ok.json()).toEqual({ id: "1" });
+      const other = await handle(new Request("http://x/api/things/1", { method: "OPTIONS", headers: { origin: "https://evil.example" } }));
+      expect(other.status).toBe(403);
+      expect(other.headers.get("access-control-allow-origin")).toBeNull();
+      expect((await handle(new Request("http://x/api/things/1", { headers: { origin: "https://evil.example" } }))).headers.get("access-control-allow-origin")).toBeNull();
+    } finally {
+      if (before === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = before;
+    }
   });
   it("404 and 405", async () => {
     expect((await handle(new Request("http://x/api/nothing"))).status).toBe(404);
@@ -40,14 +56,14 @@ describe("router", () => {
 });
 
 describe("request paths", () => {
-  it("prefers the original path", () => {
+  it("is the request's path", () => {
     expect(requestPath(new URL("http://x/api/voice/status"))).toBe("/api/voice/status");
-    expect(requestPath(new URL("http://x/api?__path=voice/status"))).toBe("/api/voice/status");
   });
-  it("publicUrl uses APP_URL (not Host) and drops the rewrite parameter", () => {
-    const req = new Request("http://evil.example/api?__path=voice/status&CallSid=CA1&b=2");
+  it("publicUrl uses the server's configured address (not Host)", () => {
+    const req = new Request("http://evil.example/api/voice/status?CallSid=CA1&b=2");
     expect(publicUrl(req, "https://crm.example/")).toBe("https://crm.example/api/voice/status?CallSid=CA1&b=2");
-    expect(publicUrl(new Request("http://localhost/api/voice/status"), "https://crm.example")).toBe("https://crm.example/api/voice/status");
+    // The Supabase Edge Function sees /api/...; Twilio called .../functions/v1/api/...
+    expect(publicUrl(new Request("http://localhost/api/voice/status"), "https://ref.supabase.co/functions/v1")).toBe("https://ref.supabase.co/functions/v1/api/voice/status");
   });
 });
 

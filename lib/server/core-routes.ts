@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Route } from "./router.js";
-import { appUrl, features, publicFeatures } from "./env.js";
+import { appUrl, features, publicFeatures, serverUrl } from "./env.js";
 import { badRequest, errorSummary, forbidden, json, notFound, readJson, redirect, str } from "./http.js";
 import { OWNER, requireAuth, requireUser } from "./auth.js";
 import { adminClient, anonClient } from "./supabase.js";
@@ -75,7 +75,7 @@ async function inviteExistingAccount(
   try {
     const cfg = senderConfig();
     if (cfg) {
-      const content = teamInviteEmail({ inviterName: opts.inviterName, role: opts.role, link: `${appUrl()}/api/team/join?token=${token}`, expiresDays: INVITE_DAYS });
+      const content = teamInviteEmail({ inviterName: opts.inviterName, role: opts.role, link: `${serverUrl()}/api/team/join?token=${token}`, expiresDays: INVITE_DAYS });
       await inviteMailer({ to: opts.email, subject: content.subject, html: content.html, text: content.text, idempotencyKey: `invite:${row.id}` }, cfg);
       return "crm";
     }

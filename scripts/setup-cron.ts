@@ -1,13 +1,14 @@
-// Points Supabase's every-minute scheduler (pg_cron job "crm-tick", created by
-// migration 20261017100300_scheduler.sql) at this app.
+// Points Supabase's scheduler (pg_cron jobs "crm-tick" every minute and
+// "crm-daily") at the CRM's server.
 //
 //   npm run setup:cron
 //
-// Reads SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_URL and CRON_SECRET from
-// the environment (or .env / .env.local) and stores APP_URL and CRON_SECRET in
-// Supabase Vault through the configure_cron() database function. The secret
-// is never printed. Run it again whenever APP_URL or CRON_SECRET changes; the
-// same CRON_SECRET must be set on Vercel.
+// Reads SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SERVER_URL (or APP_URL when
+// the site and server share an address, as locally) and CRON_SECRET from the
+// environment (or .env / .env.local), and stores the address and the secret in
+// Supabase Vault through the configure_cron() database function. The secret is
+// never printed. The deploy workflow runs it; the server must have the same
+// CRON_SECRET.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
@@ -26,14 +27,14 @@ const need = (k: string) => {
   return v;
 };
 const supabaseUrl = need("SUPABASE_URL");
-const appUrl = need("APP_URL").replace(/\/+$/, "");
+const appUrl = (process.env.SERVER_URL || need("APP_URL")).replace(/\/+$/, "");
 const secret = need("CRON_SECRET");
 if (secret.length < 24) {
   console.error("CRON_SECRET must be at least 24 characters.");
   process.exit(1);
 }
 if (!/^https:\/\//.test(appUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(appUrl)) {
-  console.error("APP_URL must be https:// (or a local address for development).");
+  console.error("SERVER_URL must be https:// (or a local address for development).");
   process.exit(1);
 }
 

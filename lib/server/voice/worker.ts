@@ -7,7 +7,7 @@ import { isUuid, RECORDINGS_BUCKET, twilioApiBase } from "./config.js";
 
 // Background work for calling: copying finished recordings from Twilio into
 // the private "call-recordings" bucket, where the CRM hands out short-lived
-// signed links (never streamed through a Vercel function).
+// signed links (never streamed through the server).
 
 const RECORDING_SID = /^RE[0-9a-f]{32}$/i;
 /** The bucket's own limit (migration 20261017100100_integrations.sql). */

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { admin, gotoTab, loginToCrm, users } from "./helpers.js";
+import { admin, api, gotoTab, loginToCrm, users } from "./helpers.js";
 
 // Task notification settings and sender status against the real database and
 // Mailpit (local SMTP catcher, used when SMTP_HOST points at it). Leaves the
@@ -49,7 +49,7 @@ test.describe("task notification emails", () => {
     await expect(status.getByRole("heading", { name: "Notification emails" })).toBeVisible();
     await expect(status.locator(".setting-label", { hasText: "Sender" })).toBeVisible();
 
-    const features = await (await page.request.get("/api/config")).json();
+    const features = await (await page.request.get(api("/config"))).json();
     test.skip(!features.features?.notifications, "No email sender is configured for this server");
     await gotoTab(page, "profile");
     const startedAt = new Date().toISOString();

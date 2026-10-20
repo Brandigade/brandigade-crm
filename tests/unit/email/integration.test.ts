@@ -113,8 +113,16 @@ describe.skipIf(!reachable)("email integration (local Supabase + fake Gmail serv
   }, 60_000);
 
   it("connects a mailbox through OAuth with the browser-binding cookie", async () => {
-    const start = await call("/api/email/oauth/start", { body: { provider: "google" }, who: "editor" });
-    expect(start.status).toBe(200);
+    // Start, then the browser's visit to /launch sets the cookie and forwards to Google.
+    const begin = async () => {
+      const s = await call("/api/email/oauth/start", { body: { provider: "google" }, who: "editor" });
+      expect(s.status).toBe(200);
+      const launch = new URL(s.json.url);
+      const l = await call(launch.pathname + launch.search);
+      expect(l.status).toBe(302);
+      return { res: l.res, json: { url: l.res.headers.get("location")! } };
+    };
+    const start = await begin();
     const setCookie = start.res.headers.get("set-cookie") || "";
     expect(setCookie).toMatch(/^crm_oauth=[^;]+; HttpOnly; SameSite=Lax; Path=\/api\/email\/oauth; Max-Age=600$/); // no Secure on http://localhost
     const cookie = setCookie.split(";")[0];
@@ -126,7 +134,7 @@ describe.skipIf(!reachable)("email integration (local Supabase + fake Gmail serv
     const wrong = await call(back.pathname + back.search, { cookie: "crm_oauth=someone-else" });
     expect(wrong.res.headers.get("location")).toBe("http://localhost:3101/?email_error=browser_mismatch#profile");
 
-    const again = await call("/api/email/oauth/start", { body: { provider: "google" }, who: "editor" });
+    const again = await begin();
     const cookie2 = (again.res.headers.get("set-cookie") || "").split(";")[0];
     const back2 = new URL((await fetch(again.json.url, { redirect: "manual" })).headers.get("location")!);
     const ok = await call(back2.pathname + back2.search, { cookie: cookie2 });

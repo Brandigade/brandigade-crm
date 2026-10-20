@@ -25,9 +25,27 @@ export function appUrl(): string {
   return (getEnv("APP_URL") || "http://localhost:3000").replace(/\/+$/, "");
 }
 
+/**
+ * Where the server's /api/* routes are served, without a trailing slash.
+ * Locally (and on any host that serves the site and the API together) that is
+ * APP_URL. In production the site is on GitHub Pages and the server is the
+ * Supabase Edge Function "api": SERVER_URL=https://<ref>.supabase.co/functions/v1.
+ * OAuth redirects, Twilio webhooks, invite links and the scheduler use it.
+ */
+export function serverUrl(): string {
+  return (getEnv("SERVER_URL") || appUrl()).replace(/\/+$/, "");
+}
+
 export function appName(): string {
   return getEnv("APP_NAME") || "Brandigade CRM";
 }
+
+/**
+ * True inside the Supabase Edge Function (Deno). Each request there gets about
+ * 2 seconds of CPU, so background work goes in smaller steps per scheduler
+ * tick (it resumes on the next one).
+ */
+export const ON_EDGE = typeof (globalThis as { Deno?: unknown }).Deno !== "undefined";
 
 /** Which integrations have their credentials configured. */
 export const features = {

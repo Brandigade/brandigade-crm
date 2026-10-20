@@ -60,6 +60,10 @@ export function safeEqual(a: string, b: string): boolean {
 /** PKCE (RFC 7636) verifier and S256 challenge. */
 export function pkcePair(): { verifier: string; challenge: string } {
   const verifier = randomBytes(48).toString("base64url");
-  const challenge = createHash("sha256").update(verifier).digest("base64url");
-  return { verifier, challenge };
+  return { verifier, challenge: pkceChallenge(verifier) };
+}
+
+/** The S256 code challenge for a PKCE verifier. */
+export function pkceChallenge(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
 }

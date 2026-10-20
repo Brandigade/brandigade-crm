@@ -1,4 +1,4 @@
-import { appUrl, features, getEnv } from "../env.js";
+import { features, getEnv, serverUrl } from "../env.js";
 import { countryOf, normalizeCountry } from "./phone.js";
 import type { CountryCode } from "libphonenumber-js/max";
 
@@ -61,7 +61,7 @@ export const MAX_CALLS_PER_HOUR = 60;
 export const MAX_CALLS_PER_DAY = 300;
 
 export const voiceUrls = () => {
-  const base = appUrl();
+  const base = serverUrl();
   return {
     outbound: `${base}/api/voice/outbound`,
     incoming: `${base}/api/voice/incoming`,

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { admin, gotoTab, loginToCrm } from "./helpers.js";
+import { admin, api, gotoTab, loginToCrm } from "./helpers.js";
 
 // Inviting an address that already has a login: someone may have registered it
 // beforehand to get into the CRM. The test plays that person: they keep a live
@@ -40,7 +40,7 @@ test.describe("inviting someone who already has a login", () => {
   });
 
   test("they join only from the emailed link, and the old password and sessions stop working", async ({ page, browser, request }) => {
-    const features = await (await request.get("/api/config")).json();
+    const features = await (await request.get(api("/config"))).json();
     test.skip(!features.features?.notifications, "No email sender is configured for this server");
 
     // Whoever registered the address has a live session the whole time.
@@ -103,7 +103,7 @@ test.describe("inviting someone who already has a login", () => {
   });
 
   test("the owner can cancel a pending invite, and its link stops working", async ({ page, request }) => {
-    const features = await (await request.get("/api/config")).json();
+    const features = await (await request.get(api("/config"))).json();
     test.skip(!features.features?.notifications, "No email sender is configured for this server");
     const other = `e2e-cancel-${Date.now().toString(36)}@crm.test`;
     const db = admin();

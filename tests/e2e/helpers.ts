@@ -14,6 +14,13 @@ export const users = JSON.parse(fs.readFileSync(path.resolve(here, "../fixtures/
 >;
 export type Who = keyof typeof users;
 
+/**
+ * A server route. By default the dev server's own /api; with E2E_API_URL set
+ * (e.g. http://127.0.0.1:57321/functions/v1/api) the local Supabase Edge
+ * Function, the way production runs it.
+ */
+export const api = (path: string) => (process.env.E2E_API_URL || "/api").replace(/\/+$/, "") + path;
+
 /** A unique prefix so tests can share the local database and clean up after themselves. */
 export const tag = (label: string) => `E2E ${label} ${Date.now().toString(36)}`;
 

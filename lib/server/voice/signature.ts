@@ -1,11 +1,11 @@
 import { validateRequest } from "twilio/lib/webhooks/webhooks.js";
-import { appUrl, getEnv } from "../env.js";
+import { getEnv, serverUrl } from "../env.js";
 import { forbidden, HttpError, readForm } from "../http.js";
 import { publicUrl } from "../router.js";
 
 /**
  * Reads a Twilio webhook and proves it came from Twilio: X-Twilio-Signature
- * must be the HMAC of the public URL (rebuilt from APP_URL, never from the
+ * must be the HMAC of the public URL (rebuilt from SERVER_URL, never from the
  * Host header) plus the form parameters, keyed with TWILIO_AUTH_TOKEN. Every
  * voice webhook calls this before it does anything else.
  */
@@ -16,7 +16,7 @@ export async function readTwilioWebhook(req: Request): Promise<Record<string, st
   const signature = req.headers.get("x-twilio-signature");
   if (!signature) throw forbidden("Missing Twilio signature");
   const params = await readForm(req);
-  const url = publicUrl(req, appUrl());
+  const url = publicUrl(req, serverUrl());
   let valid: boolean;
   try {
     valid = validateRequest(authToken, signature, url, params);

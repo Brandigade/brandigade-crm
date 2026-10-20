@@ -67,7 +67,12 @@ double_confirm_changes = true
 enable_confirmations = false
 
 [edge_runtime]
-enabled = false
+enabled = true
+
+# The CRM's server (supabase/functions/api). Each route checks who is calling
+# itself, because webhooks and the scheduler have no Supabase sign-in.
+[functions.api]
+verify_jwt = false
 
 [analytics]
 enabled = false

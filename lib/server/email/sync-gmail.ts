@@ -77,14 +77,16 @@ export async function processGmailIds(
 }
 
 async function runScan(gmail: GmailClient, account: AccountRow, scan: GmailScan, deadline: number, stats: IngestStats): Promise<boolean> {
+  let thisRun = 0;
   for (;;) {
     const remaining = scan.max - scan.examined;
     if (remaining <= 0) return true;
-    if (timeUp(deadline, 6000)) return false;
-    const page = await gmail.listMessages(scan.query, scan.pageToken || undefined, Math.min(100, remaining));
+    if (timeUp(deadline, 6000) || thisRun >= LIMITS.scanMessagesPerRun) return false;
+    const page = await gmail.listMessages(scan.query, scan.pageToken || undefined, Math.min(100, remaining, LIMITS.scanMessagesPerRun - thisRun));
     const ids = (page.messages || []).map((m) => m.id);
     await processGmailIds(gmail, account, ids, stats);
     scan.examined += ids.length;
+    thisRun += ids.length;
     scan.pageToken = page.nextPageToken || null;
     if (!page.nextPageToken || !ids.length) return true;
   }

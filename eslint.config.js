@@ -3,10 +3,10 @@ import tseslint from "typescript-eslint";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["node_modules/**", "dist/**", ".claude/**", ".vercel/**", "playwright-report/**", "test-results/**"] },
+  { ignores: ["node_modules/**", "dist/**", ".claude/**", "playwright-report/**", "test-results/**", "supabase/functions/**", "supabase/.temp/**"] },
   // Server, scripts and tests (TypeScript / ES modules on Node).
   {
-    files: ["api/**/*.ts", "lib/**/*.ts", "scripts/**/*.{ts,mjs}", "tests/**/*.ts", "*.config.ts", "*.config.js"],
+    files: ["lib/**/*.ts", "scripts/**/*.{ts,mjs}", "tests/**/*.ts", "*.config.ts", "*.config.js"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: { globals: { ...globals.node } },
     rules: {

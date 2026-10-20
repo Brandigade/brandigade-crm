@@ -115,9 +115,9 @@ export async function syncAccount(account: AccountRow, opts: { deadline: number 
 export async function syncDueEmailAccounts(opts: { deadline: number }): Promise<unknown> {
   if (!features.tokenEncryption() || (!features.gmail() && !features.outlook())) return { skipped: "not_configured" };
   const summary = { claimed: 0, synced: 0, partial: 0, failed: 0, reconnectRequired: 0, rateLimited: 0, examined: 0, stored: 0 };
-  while (Date.now() < opts.deadline - 8000) {
+  while (Date.now() < opts.deadline - 8000 && summary.claimed < LIMITS.mailboxesPerTick) {
     const lease = Math.max(30, Math.ceil((opts.deadline - Date.now()) / 1000) + 30);
-    const batch = await repo().claimAccounts(3, lease);
+    const batch = await repo().claimAccounts(Math.min(3, LIMITS.mailboxesPerTick - summary.claimed), lease);
     if (!batch.length) break;
     summary.claimed += batch.length;
     for (const account of batch) {

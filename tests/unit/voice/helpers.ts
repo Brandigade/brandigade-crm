@@ -101,8 +101,8 @@ export function twilioRequest(
   const signature = getExpectedTwilioSignature(o.signWith ?? TWILIO.TWILIO_AUTH_TOKEN, url, o.signedParams ?? params);
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
   if (!o.noSignature) headers["x-twilio-signature"] = signature;
-  // Vercel rewrites /api/* to /api?__path=...; the handler sees that URL.
-  const reqUrl = o.requestUrl ?? `https://internal.vercel.example/api?__path=${encodeURIComponent(path.replace(/^\/api\//, ""))}`;
+  // The handler sees an internal address; the signature is over the public one.
+  const reqUrl = o.requestUrl ?? `http://internal.example${path}`;
   return new Request(reqUrl, { method: "POST", headers, body: new URLSearchParams(params).toString() });
 }
 

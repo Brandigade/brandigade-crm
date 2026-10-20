@@ -69,8 +69,8 @@ describe("setup-twilio", () => {
   });
 
   it("only public https addresses can be webhook targets", () => {
-    expect(checkAppUrl("https://brandigade-crm.vercel.app")).toBeNull();
-    expect(checkAppUrl("http://brandigade-crm.vercel.app")).toMatch(/https/);
+    expect(checkAppUrl("https://wqdysxpormmxxaakfgtu.supabase.co/functions/v1")).toBeNull();
+    expect(checkAppUrl("http://wqdysxpormmxxaakfgtu.supabase.co/functions/v1")).toMatch(/https/);
     expect(checkAppUrl("https://localhost:3000")).toMatch(/internet/);
     expect(checkAppUrl("nope")).toMatch(/valid/);
   });

@@ -1,3 +1,4 @@
+import { appUrl } from "./env.js";
 import { errorResponse, json } from "./http.js";
 
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -39,32 +40,61 @@ function compile(route: Route): Compiled {
 }
 
 /**
- * The path the client asked for. Vercel rewrites /api/* to the single
- * function at /api; the original path is kept in request.url, and also passed
- * as ?__path= by the rewrite in vercel.json as a fallback.
+ * The path the client asked for: /api/... both on the dev server and in the
+ * Supabase Edge Function "api" (which sees its own name as the first segment).
  */
 export function requestPath(url: URL): string {
-  const fromRewrite = url.searchParams.get("__path");
-  if (url.pathname !== "/api" && url.pathname !== "/api/") return url.pathname;
-  if (fromRewrite) return "/api/" + fromRewrite.replace(/^\/+/, "");
   return url.pathname;
 }
 
 /**
  * The public URL a caller (e.g. Twilio) used for this request, rebuilt from
- * APP_URL rather than the Host header so it can't be spoofed. Webhook
+ * SERVER_URL rather than the Host header so it can't be spoofed. Webhook
  * signatures are computed over exactly this URL.
  */
 export function publicUrl(req: Request, base: string): string {
   const url = new URL(req.url);
-  const path = requestPath(url);
-  const params = new URLSearchParams(url.search);
-  params.delete("__path");
-  const qs = params.toString();
-  return base.replace(/\/+$/, "") + path + (qs ? "?" + qs : "");
+  return base.replace(/\/+$/, "") + requestPath(url) + url.search;
+}
+
+// The site (GitHub Pages) and the server (a Supabase Edge Function) are on
+// different addresses, so the browser asks before each API call (CORS). Only
+// the CRM's own site may call it; sign-in uses bearer tokens, never cookies.
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  let allowed: string | null;
+  try {
+    allowed = new URL(appUrl()).origin;
+  } catch {
+    allowed = null;
+  }
+  if (!origin || origin !== allowed) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+}
+
+function withHeaders(res: Response, extra: Record<string, string>): Response {
+  if (!Object.keys(extra).length) return res;
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(extra)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 export function createRouter(routes: Route[]) {
+  const route = createRoutes(routes);
+  return async function handle(req: Request): Promise<Response> {
+    const cors = corsHeaders(req);
+    if (req.method === "OPTIONS") return new Response(null, { status: cors["Access-Control-Allow-Origin"] ? 204 : 403, headers: cors });
+    return withHeaders(await route(req), cors);
+  };
+}
+
+function createRoutes(routes: Route[]) {
   const compiled = routes.map(compile);
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);

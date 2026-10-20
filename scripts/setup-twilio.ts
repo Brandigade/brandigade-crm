@@ -4,17 +4,18 @@
 //   npm run setup:twilio -- --dry-run show what would change, change nothing
 //
 // Needs (environment, .env or .env.local):
-//   APP_URL               the public https:// address of the CRM (e.g. https://brandigade-crm.vercel.app)
+//   SERVER_URL            the CRM server's https:// address (https://<ref>.supabase.co/functions/v1;
+//                         APP_URL is used when the site and server share an address)
 //   TWILIO_ACCOUNT_SID    AC...
 //   TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET   (or TWILIO_AUTH_TOKEN)
 //   TWILIO_CALLER_ID      optional: the Twilio number (E.164) that should ring the CRM
 //   TWILIO_TWIML_APP_SID  optional: update this TwiML App instead of finding "Brandigade CRM" by name
 //
 // It creates (or updates) the TwiML App "Brandigade CRM" with Voice URL
-// APP_URL/api/voice/outbound and status callback APP_URL/api/voice/status, sets
-// the phone number's Voice URL to APP_URL/api/voice/incoming, and prints the
-// values to put in the server environment (Vercel). Secrets are never printed.
-// Safe to run again after APP_URL changes.
+// SERVER_URL/api/voice/outbound and status callback SERVER_URL/api/voice/status,
+// sets the phone number's Voice URL to SERVER_URL/api/voice/incoming, and prints
+// TWILIO_TWIML_APP_SID for the server (the deploy workflow stores it in
+// Supabase). Secrets are never printed. Safe to run again.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error plain JS helper
@@ -37,7 +38,7 @@ const keySid = env("TWILIO_API_KEY_SID");
 const keySecret = env("TWILIO_API_KEY_SECRET");
 const authToken = env("TWILIO_AUTH_TOKEN");
 if (!(keySid && keySecret) && !authToken) fail("Set TWILIO_API_KEY_SID and TWILIO_API_KEY_SECRET (or TWILIO_AUTH_TOKEN).");
-const appUrl = env("APP_URL").replace(/\/+$/, "");
+const appUrl = (env("SERVER_URL") || env("APP_URL")).replace(/\/+$/, "");
 const urlProblem = checkAppUrl(appUrl);
 if (urlProblem) fail(urlProblem);
 const callerId = env("TWILIO_CALLER_ID");
@@ -57,7 +58,7 @@ try {
   });
   console.log("");
   if (dryRun) console.log("Dry run: nothing was changed.");
-  console.log("Set these on the server (Vercel -> Project Settings -> Environment Variables):");
+  console.log("The server needs these (the deploy workflow sets TWILIO_TWIML_APP_SID itself):");
   console.log(`  TWILIO_TWIML_APP_SID=${result.twimlAppSid ?? "(created on a real run)"}`);
   if (callerId) console.log(`  TWILIO_CALLER_ID=${callerId}`);
   console.log("  TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET (from the Twilio Console)");

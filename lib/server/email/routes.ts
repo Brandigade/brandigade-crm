@@ -3,7 +3,7 @@ import { EDITORS, requireAuth, type AuthContext } from "../auth.js";
 import { decryptSecret } from "../crypto.js";
 import { HttpError, json, notFound } from "../http.js";
 import { providerConfigured, providerLabel, urls } from "./config.js";
-import { oauthCallback, startOAuth } from "./oauth.js";
+import { launchOAuth, oauthCallback, startOAuth } from "./oauth.js";
 import { providerFetch } from "./provider-http.js";
 import { repo, type AccountRow } from "./repo.js";
 import { sendEmail } from "./send.js";
@@ -12,6 +12,7 @@ import { syncAccount } from "./sync.js";
 // Email integration routes (Gmail + Outlook). See docs/ARCHITECTURE.md.
 //
 //   POST /api/email/oauth/start                    connect a mailbox (editors)
+//   GET  /api/email/oauth/launch                   sets the browser cookie, goes to the provider
 //   GET  /api/email/oauth/google/callback          provider redirects here
 //   GET  /api/email/oauth/microsoft/callback
 //   GET  /api/email/accounts                       my mailboxes
@@ -127,6 +128,7 @@ async function disconnect(req: Request, id: string): Promise<Response> {
 
 export const emailRoutes: Route[] = [
   { method: "POST", path: "/api/email/oauth/start", handler: (req) => startOAuth(req) },
+  { method: "GET", path: "/api/email/oauth/launch", handler: (req) => launchOAuth(req) },
   { method: "GET", path: "/api/email/oauth/google/callback", handler: (req) => oauthCallback(req, "google") },
   { method: "GET", path: "/api/email/oauth/microsoft/callback", handler: (req) => oauthCallback(req, "microsoft") },
   { method: "GET", path: "/api/email/accounts", handler: (req) => listAccounts(req) },

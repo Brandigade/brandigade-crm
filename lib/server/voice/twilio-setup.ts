@@ -1,7 +1,7 @@
 // Creates or updates the Twilio side of calling (used by scripts/setup-twilio.ts):
-//   * a TwiML App "Brandigade CRM" whose Voice URL is APP_URL/api/voice/outbound
-//     (browser calls) and whose status callback is APP_URL/api/voice/status
-//   * the TWILIO_CALLER_ID phone number's Voice URL -> APP_URL/api/voice/incoming
+//   * a TwiML App "Brandigade CRM" whose Voice URL is SERVER_URL/api/voice/outbound
+//     (browser calls) and whose status callback is SERVER_URL/api/voice/status
+//   * the TWILIO_CALLER_ID phone number's Voice URL -> SERVER_URL/api/voice/incoming
 // Plain REST calls (form-encoded, basic auth) so the base URL can be a fake in tests.
 
 export const TWIML_APP_NAME = "Brandigade CRM";
@@ -39,10 +39,10 @@ export function checkAppUrl(appUrl: string): string | null {
   try {
     u = new URL(appUrl);
   } catch {
-    return "APP_URL isn't a valid URL.";
+    return "SERVER_URL isn't a valid URL.";
   }
-  if (u.protocol !== "https:") return "APP_URL must be the public https:// address of the CRM (Twilio can't reach localhost).";
-  if (/^(localhost|127\.|10\.|192\.168\.)/.test(u.hostname)) return "APP_URL must be reachable from the internet.";
+  if (u.protocol !== "https:") return "SERVER_URL must be the public https:// address of the CRM's server (Twilio can't reach localhost).";
+  if (/^(localhost|127\.|10\.|192\.168\.)/.test(u.hostname)) return "SERVER_URL must be reachable from the internet.";
   return null;
 }
 

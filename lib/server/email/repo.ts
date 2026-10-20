@@ -111,6 +111,8 @@ export interface ContactMatch {
 
 export interface EmailRepo {
   insertOAuthState(row: OAuthStateRow): Promise<void>;
+  /** Returns the state without using it up (the /launch step). */
+  peekOAuthState(stateHash: string): Promise<OAuthStateRow | null>;
   /** Deletes and returns the state (single use: a second call gets null). */
   takeOAuthState(stateHash: string): Promise<OAuthStateRow | null>;
   deleteExpiredOAuthStates(userId: string): Promise<void>;
@@ -173,6 +175,10 @@ export function supabaseRepo(db: SupabaseClient): EmailRepo {
   return {
     async insertOAuthState(row) {
       check(await db.from("oauth_states").insert(row), "Saving the sign-in attempt");
+    },
+    async peekOAuthState(stateHash) {
+      const res = await db.from("oauth_states").select("*").eq("state_hash", stateHash).maybeSingle();
+      return (check(res, "Reading the sign-in attempt") as OAuthStateRow | null) ?? null;
     },
     async takeOAuthState(stateHash) {
       const res = await db.from("oauth_states").delete().eq("state_hash", stateHash).select();

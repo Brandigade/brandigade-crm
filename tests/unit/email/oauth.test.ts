@@ -19,10 +19,17 @@ const cookieOf = (res: Response) => {
   return { raw: set, value: /crm_oauth=([^;]*)/.exec(set)?.[1] ?? null };
 };
 
+// Start, then the browser's visit to /launch (which sets the cookie and
+// forwards to the provider).
 async function start(provider: "google" | "microsoft", who: "editor" | "owner" = "editor") {
   const r = await t.call("/api/email/oauth/start", { body: { provider }, who });
   expect(r.status).toBe(200);
-  return { url: r.json.url as string, cookie: cookieOf(r.res) };
+  expect(r.res.headers.get("set-cookie")).toBeNull();
+  const launch = new URL(r.json.url as string);
+  expect(launch.pathname).toBe("/api/email/oauth/launch");
+  const l = await t.call(launch.pathname + launch.search);
+  expect(l.status).toBe(302);
+  return { url: l.res.headers.get("location") || "", cookie: cookieOf(l.res), launch };
 }
 
 async function callback(callbackUrl: string, cookie: string | null) {
@@ -86,6 +93,37 @@ describe("POST /api/email/oauth/start", () => {
     expect(u.searchParams.get("redirect_uri")).toBe("https://crm.example/api/email/oauth/microsoft/callback");
     expect(u.searchParams.get("response_mode")).toBe("query");
     expect(u.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("the launch step needs the right browser code, doesn't use the attempt up, and fails safely", async () => {
+    const r = await t.call("/api/email/oauth/start", { body: { provider: "google" }, who: "editor" });
+    const launch = new URL(r.json.url as string);
+    const state = launch.searchParams.get("state")!;
+    const wrong = new URL(launch);
+    wrong.searchParams.set("n", "someone-else");
+    const bad = await t.call(wrong.pathname + wrong.search);
+    expect(bad.res.headers.get("location")).toBe("https://crm.example/?email_error=browser_mismatch#profile");
+    expect(bad.res.headers.get("set-cookie")).toMatch(/Max-Age=0/);
+    expect((await t.call("/api/email/oauth/launch?state=nope&n=x")).res.headers.get("location")).toBe("https://crm.example/?email_error=invalid_state#profile");
+    // Opening it twice is harmless: the attempt is only used up at the callback.
+    for (let i = 0; i < 2; i++) {
+      const ok = await t.call(launch.pathname + launch.search);
+      expect(new URL(ok.res.headers.get("location")!).searchParams.get("state")).toBe(state);
+    }
+    expect(t.db.oauth_states).toHaveLength(1);
+    t.db.oauth_states[0].expires_at = new Date(Date.now() - 1000).toISOString();
+    expect((await t.call(launch.pathname + launch.search)).res.headers.get("location")).toBe("https://crm.example/?email_error=expired#profile");
+  });
+
+  it("uses the server's own address when it isn't the site's (Supabase Edge Function)", async () => {
+    process.env.SERVER_URL = "https://ref.supabase.co/functions/v1";
+    const r = await t.call("/api/email/oauth/start", { body: { provider: "google" }, who: "editor" });
+    expect(r.json.url).toMatch(/^https:\/\/ref\.supabase\.co\/functions\/v1\/api\/email\/oauth\/launch\?state=/);
+    const launch = new URL(r.json.url);
+    const l = await t.call(launch.pathname.replace("/functions/v1", "") + launch.search);
+    expect(new URL(l.res.headers.get("location")!).searchParams.get("redirect_uri")).toBe("https://ref.supabase.co/functions/v1/api/email/oauth/google/callback");
+    expect(l.res.headers.get("set-cookie")).toMatch(/Path=\/functions\/v1\/api\/email\/oauth;/);
+    delete process.env.SERVER_URL;
   });
 
   it("omits Secure only for an http://localhost APP_URL", async () => {

@@ -1,4 +1,4 @@
-import { appUrl, features, getEnv, requireEnv } from "../env.js";
+import { ON_EDGE, features, getEnv, requireEnv, serverUrl } from "../env.js";
 
 // Provider settings for Gmail and Outlook. Every base URL can be overridden
 // with an environment variable so tests (and local fakes) never talk to the
@@ -52,7 +52,7 @@ export function clientCredentials(p: Provider): { clientId: string; clientSecret
 
 /** Fixed from APP_URL; must be registered exactly like this at the provider. */
 export function redirectUri(p: Provider): string {
-  return `${appUrl()}/api/email/oauth/${p}/callback`;
+  return `${serverUrl()}/api/email/oauth/${p}/callback`;
 }
 
 export function tokenUrl(p: Provider): string {
@@ -63,16 +63,22 @@ export function isProvider(v: unknown): v is Provider {
   return v === "google" || v === "microsoft";
 }
 
-// Sync limits (see docs/ARCHITECTURE.md and the email worker).
+// Sync limits (see docs/ARCHITECTURE.md and the email worker). Inside the
+// Supabase Edge Function a run handles fewer messages (CPU limit per request);
+// scans and history resume where they stopped on the next tick.
 export const LIMITS = {
   initialWindowDays: 30,
   rescanWindowDays: 7,
   backfillWindowDays: 90,
   initialMaxMessages: 500,
-  backfillMaxMessages: 200,
-  incrementalMaxMessages: 500,
+  /** Messages a single run looks at while scanning (the scan resumes). */
+  scanMessagesPerRun: ON_EDGE ? 100 : 500,
+  backfillMaxMessages: ON_EDGE ? 50 : 200,
+  incrementalMaxMessages: ON_EDGE ? 100 : 500,
+  /** Mailboxes one scheduler tick syncs. */
+  mailboxesPerTick: ON_EDGE ? 2 : 50,
   // Graph delta pages already carry the metadata, so a run can look at more.
-  graphMessagesPerRun: 2000,
+  graphMessagesPerRun: ON_EDGE ? 200 : 2000,
   syncIntervalMs: 2 * 60 * 1000,
   maxBackoffMs: 60 * 60 * 1000,
   bodyTextMax: 100_000,

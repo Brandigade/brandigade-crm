@@ -1,4 +1,4 @@
-// Real screenshots of the CRM for docs/report, taken against the LOCAL stack
+// Real screenshots of the CRM for docs/screenshots, taken against the LOCAL stack
 // (npm run dev + local Supabase + Mailpit). It creates a small sample lead
 // through the UI, photographs the screens, then deletes what it created.
 //
@@ -17,7 +17,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadLocalEnv(root);
 const BASE = process.argv[2] || "http://localhost:3000";
 const MAILPIT = process.env.MAILPIT_URL || "http://127.0.0.1:57324";
-const OUT = path.join(root, "docs", "report", "shots");
+const OUT = path.join(root, "docs", "screenshots");
 if (!/^http:\/\/(127\.0\.0\.1|localhost)/.test(process.env.SUPABASE_URL || "")) throw new Error("Only for the local Supabase stack");
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -32,11 +32,11 @@ let ownerName: { id: string; before: string | null } | null = null;
 async function shot(page: Page, name: string, opts: { fullPage?: boolean; keepToasts?: boolean } = {}) {
   const file = path.join(OUT, `${name}.png`);
   // Pop-up notices fade after a few seconds anyway; close them like a person would.
-  if (!opts.keepToasts) await page.evaluate(() => document.querySelectorAll("#toast-container .toast").forEach((t) => t.remove()));
+  if (!opts.keepToasts) await page.evaluate(() => (globalThis as any).document.querySelectorAll("#toast-container .toast").forEach((t: { remove(): void }) => t.remove()));
   if (opts.fullPage) {
     // A viewport as tall as the page, so the full-height sidebar fills it too.
     const size = page.viewportSize()!;
-    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    const height = await page.evaluate(() => (globalThis as any).document.documentElement.scrollHeight);
     await page.setViewportSize({ width: size.width, height });
     await page.waitForTimeout(300);
     await page.screenshot({ path: file });
@@ -75,7 +75,6 @@ try {
   await page.goto(BASE + "/");
   await page.locator("#auth-login-view").waitFor();
   await page.waitForTimeout(400);
-  await shot(page, "01-login");
 
   // The local owner account has no display name; give it one for the pictures.
   const { data: ownerProfile } = await db.from("profiles").select("id,display_name").eq("email", users.owner.email).single();
@@ -129,14 +128,14 @@ try {
   // A call logged by hand (no phone provider is connected locally).
   await tab(page, "contacts");
   await page.locator("#contacts-search").fill("Maya");
-  await page.evaluate(() => document.addEventListener("click", (e) => { const a = (e.target as Element).closest?.('a[href^="tel:"]'); if (a) e.preventDefault(); }, true));
+  await page.evaluate(() => (globalThis as any).document.addEventListener("click", (e: any) => { const a = e.target.closest?.('a[href^="tel:"]'); if (a) e.preventDefault(); }, true));
   await page.locator(`#contacts-tbody tr[data-id="${created.contact}"] .dialer-call-btn`).click();
   const prompt = page.locator("#dialer-log");
   await prompt.waitFor();
   await prompt.locator("#dialer-log-outcome").selectOption("connected");
   await prompt.locator("#dialer-log-notes").fill("Interested. Asked for a quote with two box sizes by Friday.");
   await page.waitForTimeout(300);
-  await shot(page, "07-call-log");
+  await shot(page, "log-a-call");
   await prompt.getByRole("button", { name: "Log call" }).click();
   await prompt.waitFor({ state: "hidden" });
 
@@ -161,27 +160,25 @@ try {
   // Dashboard, lead timeline, task.
   await tab(page, "dashboard");
   await page.waitForTimeout(500);
-  await shot(page, "02-dashboard");
 
   await tab(page, "contacts");
   await page.locator("#contacts-search").fill("Maya");
   await page.locator(`#contacts-tbody tr[data-id="${created.contact}"]`).click();
   await page.locator("#rm-timeline .tl-item", { hasText: "Task created" }).waitFor();
   await page.waitForTimeout(400);
-  await shot(page, "03-lead-timeline");
+  await shot(page, "lead-timeline");
   await page.locator("#rm-close").click();
 
   // The direct link from the email opens the task.
   await page.goto(`${BASE}/?task=${created.task}`);
   await page.locator("#task-view-modal-overlay").waitFor({ state: "visible", timeout: 20_000 });
   await page.waitForTimeout(300);
-  await shot(page, "04-task");
   await page.keyboard.press("Escape");
 
   // Profile: mailbox, notifications, calling.
   await tab(page, "profile");
   await page.waitForTimeout(600);
-  await shot(page, "05-profile", { fullPage: true });
+  await shot(page, "profile", { fullPage: true });
 
   // Team: a pending invite to an address that already has a login.
   const inviteEmail = "jordan.lee@crm.test";
@@ -194,12 +191,9 @@ try {
   await page.locator("#team-tbody tr", { hasText: inviteEmail }).waitFor();
   await page.waitForTimeout(600);
   // Parts of the Team page, one panel each.
-  await page.evaluate(() => document.querySelectorAll("#toast-container .toast").forEach((t) => t.remove()));
+  await page.evaluate(() => (globalThis as any).document.querySelectorAll("#toast-container .toast").forEach((t: { remove(): void }) => t.remove()));
   const panels: [string, string][] = [
-    ["06-team", "xpath=//tbody[@id='team-tbody']/ancestor::table[1]/.."],
-    ["06b-notification-sender", "#notif-team-panel"],
-    ["06c-calling-settings", "#dialer-team-panel"],
-    ["10-system-status", "#system-status-panel"],
+    ["system-status", "#system-status-panel"],
   ];
   for (const [name, sel] of panels) {
     await page.locator(sel).first().screenshot({ path: path.join(OUT, `${name}.png`) });
@@ -218,19 +212,11 @@ try {
     await mail.setViewportSize({ width: 760, height: 300 });
     await mail.goto(`${MAILPIT}/view/${mailId}.html`);
     await mail.waitForTimeout(300);
-    await shot(mail, "08-assignment-email", { fullPage: true });
+    await shot(mail, "task-email", { fullPage: true });
     await mail.close();
     await fetch(`${MAILPIT}/api/v1/messages`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ IDs: [mailId] }) });
   } else console.warn("No assignment email arrived; is SMTP_HOST set to Mailpit?");
 
-  // Phone-sized screen.
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  const p2 = await phone.newPage();
-  await login(p2, "editor");
-  await tab(p2, "board");
-  await p2.waitForTimeout(500);
-  await shot(p2, "09-mobile");
-  await phone.close();
 } finally {
   await browser.close();
   if (created.task) {

@@ -50,6 +50,10 @@ export function memoryRepo(db: MemoryDb = emptyDb()): { repo: EmailRepo; db: Mem
       if (db.oauth_states.some((s) => s.state_hash === row.state_hash)) throw new Error("duplicate state");
       db.oauth_states.push(clone({ ...row, created_at: new Date().toISOString() }));
     },
+    async peekOAuthState(hash) {
+      const row = db.oauth_states.find((s) => s.state_hash === hash);
+      return row ? clone(row) : null;
+    },
     async takeOAuthState(hash) {
       const i = db.oauth_states.findIndex((s) => s.state_hash === hash);
       if (i < 0) return null;

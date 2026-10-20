@@ -14,3 +14,6 @@ tests/e2e/.auth/
 coverage/
 *.log
 .claude/worktrees/
+# Built by npm run build:edge
+supabase/functions/api/server.js
+supabase/functions/.env*

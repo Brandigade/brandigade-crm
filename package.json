@@ -2,7 +2,7 @@
   "name": "brandigade-crm",
   "private": true,
   "type": "module",
-  "description": "Brandigade CRM: the team's shared CRM on Supabase, served by Vercel.",
+  "description": "Brandigade CRM: the team's shared CRM on Supabase, published with GitHub Pages.",
   "engines": {
     "node": ">=20"
   },
@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "setup:cron": "tsx scripts/setup-cron.ts",
     "setup:twilio": "tsx scripts/setup-twilio.ts",
-    "seed:local": "tsx scripts/seed-local.ts"
+    "seed:local": "tsx scripts/seed-local.ts",
+    "build:edge": "node scripts/build-edge.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.118.0",

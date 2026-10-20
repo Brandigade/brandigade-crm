@@ -1,6 +1,6 @@
 import { EDITORS, requireAuth } from "../auth.js";
-import { decryptSecret, encryptSecret, pkcePair, randomToken, safeEqual, sha256Hex } from "../crypto.js";
-import { appUrl } from "../env.js";
+import { decryptSecret, encryptSecret, pkceChallenge, pkcePair, randomToken, safeEqual, sha256Hex } from "../crypto.js";
+import { appUrl, serverUrl } from "../env.js";
 import { badRequest, json, notConfigured, readJson } from "../http.js";
 import { expectJson } from "../retry.js";
 import { normalizeAddress } from "./addresses.js";
@@ -38,7 +38,8 @@ import { storeTokens, tokenRequest, type TokenResponse } from "./tokens.js";
 
 export const OAUTH_COOKIE = "crm_oauth";
 export const STATE_TTL_MS = 10 * 60 * 1000;
-const COOKIE_PATH = "/api/email/oauth";
+// The cookie is scoped to the sign-in routes on the server's own address.
+const cookiePath = () => new URL(serverUrl()).pathname.replace(/\/+$/, "") + "/api/email/oauth";
 
 /** Error codes the browser understands (js/email.js). Provider text never goes in the URL. */
 export type OAuthErrorCode =
@@ -57,12 +58,12 @@ export type OAuthErrorCode =
   | "server_error";
 
 function secureCookies(): boolean {
-  const u = new URL(appUrl());
+  const u = new URL(serverUrl());
   return !(u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname));
 }
 
 export function oauthCookie(nonce: string, maxAgeSeconds = STATE_TTL_MS / 1000): string {
-  return `${OAUTH_COOKIE}=${nonce}; HttpOnly;${secureCookies() ? " Secure;" : ""} SameSite=Lax; Path=${COOKIE_PATH}; Max-Age=${maxAgeSeconds}`;
+  return `${OAUTH_COOKIE}=${nonce}; HttpOnly;${secureCookies() ? " Secure;" : ""} SameSite=Lax; Path=${cookiePath()}; Max-Age=${maxAgeSeconds}`;
 }
 
 export const clearOAuthCookie = () => oauthCookie("", 0);
@@ -134,7 +135,45 @@ export async function startOAuth(req: Request): Promise<Response> {
     return_to: null,
     expires_at: new Date(Date.now() + STATE_TTL_MS).toISOString(),
   });
-  return json({ url: authorizationUrl(provider, state, challenge) }, { headers: { "Set-Cookie": oauthCookie(nonce) } });
+  void challenge; // rebuilt from the stored verifier when the browser arrives at /launch
+  // The browser goes to /launch on the server's address, which sets the
+  // browser-binding cookie there and forwards to Google or Microsoft. (The
+  // site and the server may be on different addresses, and browsers don't
+  // keep cookies set in reply to a fetch from another site.)
+  const launch = new URL(`${serverUrl()}/api/email/oauth/launch`);
+  launch.searchParams.set("state", state);
+  launch.searchParams.set("n", nonce);
+  return json({ url: launch.toString() });
+}
+
+/** GET /api/email/oauth/launch: sets the cookie and forwards to the provider. */
+export async function launchOAuth(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const state = url.searchParams.get("state") || "";
+  const nonce = url.searchParams.get("n") || "";
+  const back = (code: OAuthErrorCode) => redirectWithCookie(errorRedirect(code));
+  if (!state || state.length > 200 || !nonce || nonce.length > 200) return back("invalid_state");
+  const stateHash = sha256Hex(state);
+  const row = await repo().peekOAuthState(stateHash);
+  if (!row) return back("invalid_state");
+  if (!(Date.parse(row.expires_at) > Date.now())) return back("expired");
+  let bound: { verifier?: string; nonceHash?: string };
+  try {
+    bound = JSON.parse(decryptSecret(row.code_verifier_enc, verifierAad(stateHash)));
+  } catch {
+    return back("invalid_state");
+  }
+  if (!bound.verifier || !bound.nonceHash || !safeEqual(sha256Hex(nonce), bound.nonceHash)) return back("browser_mismatch");
+  if (!isProvider(row.provider) || !providerConfigured(row.provider)) return back("not_configured");
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorizationUrl(row.provider, state, pkceChallenge(bound.verifier)),
+      "Set-Cookie": oauthCookie(nonce),
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
 }
 
 export function grantedScopesOk(p: Provider, scope: string | undefined): boolean {
