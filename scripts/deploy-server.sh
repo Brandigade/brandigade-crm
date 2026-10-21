@@ -55,6 +55,19 @@ put CRON_SECRET "$cron_secret"
 OPTIONAL=(GMAIL_USER GMAIL_APP_PASSWORD RESEND_API_KEY NOTIFICATION_FROM_EMAIL
   GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET MICROSOFT_CLIENT_ID MICROSOFT_CLIENT_SECRET MICROSOFT_TENANT_ID
   TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_API_KEY_SID TWILIO_API_KEY_SECRET TWILIO_CALLER_ID)
+# A secret that is still the placeholder NOT_SET (or empty) counts as not
+# set up, so the repository can list every setting ready to fill in.
+for name in "${OPTIONAL[@]}"; do
+  value="${!name:-}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$(printf '%s' "$value" | tr '[:lower:]' '[:upper:]')" in
+    "" | NOT_SET | NOTSET | "-") value="" ;;
+  esac
+  printf -v "$name" '%s' "$value"
+  export "${name?}"
+done
+
 to_remove=()
 for name in "${OPTIONAL[@]}"; do
   value="${!name:-}"
@@ -84,7 +97,9 @@ fi
 
 echo "== Server"
 npm run --silent build:edge
-supabase functions deploy api --project-ref "$REF" --no-verify-jwt
+# --use-api: Supabase packages the function itself. (Packaging it here would
+# need a Docker image download, which GitHub's machines are sometimes refused.)
+supabase functions deploy api --project-ref "$REF" --no-verify-jwt --use-api
 
 echo "== Database"
 supabase db push --password "$SUPABASE_DB_PASSWORD" --yes
@@ -121,10 +136,10 @@ let d = ""; process.stdin.on("data", (c) => (d += c)).on("end", () => {
     "",
     "| Feature | Status | To switch it on |",
     "|---|---|---|",
-    row("Task emails and invites", f.notifications, "add GMAIL_USER + GMAIL_APP_PASSWORD (or RESEND_API_KEY)"),
-    row("Gmail mailboxes", f.gmail, "add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET"),
-    row("Outlook mailboxes", f.outlook, "add MICROSOFT_CLIENT_ID + MICROSOFT_CLIENT_SECRET"),
-    row("Calling", f.calling, "add the TWILIO_* secrets"),
+    row("Task emails and invites", f.notifications, "fill in GMAIL_USER + GMAIL_APP_PASSWORD (or RESEND_API_KEY)"),
+    row("Gmail mailboxes", f.gmail, "fill in GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET"),
+    row("Outlook mailboxes", f.outlook, "fill in MICROSOFT_CLIENT_ID + MICROSOFT_CLIENT_SECRET"),
+    row("Calling", f.calling, "fill in the TWILIO_* secrets"),
     "",
     "See SETUP.md in the repository.",
   ];

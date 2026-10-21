@@ -36,7 +36,7 @@ That's all that's required. Task emails already work, from the Gmail account the
 3. Open **OAuth consent screen**. Choose **Internal** if you use Google Workspace (company Google accounts). Otherwise Google has to review the app first, which can take a few weeks.
 4. Open **Clients → Create client → Web application**. Under **Authorized redirect URIs** add:
    `https://wqdysxpormmxxaakfgtu.supabase.co/functions/v1/api/email/oauth/google/callback`
-5. Add the **Client ID** and **Client secret** as the secrets `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (see "How to add a setting" below).
+5. Put the **Client ID** and **Client secret** into the secrets `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (see "How to fill in a setting" below).
 
 Then each person goes to **Profile → Email accounts → Connect Gmail**.
 
@@ -48,7 +48,7 @@ Then each person goes to **Profile → Email accounts → Connect Gmail**.
    - Redirect URI: choose **Web**, then add `https://wqdysxpormmxxaakfgtu.supabase.co/functions/v1/api/email/oauth/microsoft/callback`
 2. Open **API permissions → Add a permission → Microsoft Graph → Delegated**. Tick `Mail.Read`, `Mail.Send`, `User.Read` and `offline_access`.
 3. Open **Certificates & secrets → New client secret** and copy the **Value**. It expires; Microsoft shows when, so set yourself a reminder to renew it.
-4. Add the **Application (client) ID** as `MICROSOFT_CLIENT_ID` and the secret's value as `MICROSOFT_CLIENT_SECRET`.
+4. Put the **Application (client) ID** into `MICROSOFT_CLIENT_ID` and the secret's value into `MICROSOFT_CLIENT_SECRET`.
 
 Then each person goes to **Profile → Email accounts → Connect Outlook**.
 
@@ -58,7 +58,7 @@ Then each person goes to **Profile → Email accounts → Connect Outlook**.
 2. Buy a phone number that supports **Voice**.
 3. From the Twilio console home page, copy the **Account SID** and **Auth Token**.
 4. Open **Account → API keys & tokens → Create API key** (Standard), and copy its **SID** and **Secret**.
-5. Add these secrets:
+5. Fill in these secrets:
    - `TWILIO_ACCOUNT_SID`
    - `TWILIO_AUTH_TOKEN`
    - `TWILIO_API_KEY_SID`
@@ -68,13 +68,15 @@ Then each person goes to **Profile → Email accounts → Connect Outlook**.
    When you run the workflow, it connects the number to the CRM for you.
 6. In the CRM, go to the **Team** page and choose the countries you call. Call recording stays off until you turn it on there. Only turn it on where recording calls is allowed.
 
-## How to add or change a setting
+## How to fill in a setting
 
 1. In this repository, open **Settings → Secrets and variables → Actions**.
-2. Click **New repository secret**, or click an existing secret and then **Update**. Use the exact names from this page.
+   - Every setting on this page is already listed there.
+   - The ones not filled in yet hold the placeholder `NOT_SET`.
+2. Click the pencil next to the secret, paste the real value, and click **Update**.
 3. Open **Actions → Test and deploy → Run workflow**. The change is live in about 5 minutes.
 
-To switch a feature off, delete its secrets and run the workflow again. Each run's summary page shows which features are on, and so does the **Team** page in the CRM.
+To switch a feature off, set its secrets back to `NOT_SET` and run the workflow again. Each run's summary page shows which features are on, and so does the **Team** page in the CRM.
 
 ## All settings
 
@@ -84,11 +86,12 @@ To switch a feature off, delete its secrets and run the workflow again. Each run
 | `SUPABASE_DB_PASSWORD` | The database password | Already set |
 | `GMAIL_USER` (a variable) | The Gmail account task emails come from | Already set |
 | `GMAIL_APP_PASSWORD` | That account's app password | Already set |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Gmail inboxes | Add to switch on |
-| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Outlook inboxes | Add to switch on |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_CALLER_ID` | Calling | Add to switch on |
-| `MICROSOFT_TENANT_ID` | Optional: only allow your company's Microsoft accounts | Optional |
-| `RESEND_API_KEY` | Optional: send task emails through Resend instead of Gmail | Optional |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Gmail inboxes | `NOT_SET`: fill in to switch on |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Outlook inboxes | `NOT_SET`: fill in to switch on |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_CALLER_ID` | Calling | `NOT_SET`: fill in to switch on |
+| `MICROSOFT_TENANT_ID` | Optional: only allow your company's Microsoft accounts | `NOT_SET`: optional |
+| `RESEND_API_KEY` | Optional: send task emails through Resend instead of Gmail | `NOT_SET`: optional |
+| `NOTIFICATION_FROM_EMAIL` (a variable) | Optional: the name task emails come from, like `Brandigade CRM <crm@brandigade.com>` | `NOT_SET`: optional |
 
 The CRM creates its own internal keys. You never need to set those.
 
