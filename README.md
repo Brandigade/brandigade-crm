@@ -1,6 +1,18 @@
 # Brandigade CRM
 
-Brandigade's own CRM, shared by the whole team. The admin invites people by email and gives them editor or viewer access. Supabase holds the data and logins; GitHub runs the tests and deploys every change.
+Brandigade's own CRM, shared by the whole team: contacts (leads), companies, a
+deal pipeline and tasks, with Gmail/Outlook email, browser calling and task
+email notifications, all on one activity timeline per lead.
+
+**Setting it up or changing a setting: see [SETUP.md](SETUP.md).**
+
+* **Site:** static HTML/CSS/vanilla JS (`index.html`, `css/`, `js/`) on GitHub Pages
+* **Server:** one Supabase Edge Function, `api` (`supabase/functions/api` → `lib/server/`)
+* **Data, logins, realtime, files:** Supabase (Postgres with row level security)
+* **Background work:** Supabase `pg_cron` calls the server every minute
+* **Deploys:** `.github/workflows/deploy.yml` on every push to `main`
+
+How it fits together, and the rules for changing it: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What's in it
 
@@ -8,79 +20,80 @@ Brandigade's own CRM, shared by the whole team. The admin invites people by emai
 |---|---|
 | **Dashboard** | Open pipeline, weighted forecast, won this month, win rate, deals closing soon, next tasks, recent activity. |
 | **Pipeline** | Drag-and-drop deals: Lead, Qualified, Proposal sent, Negotiation, Won, Lost. |
-| **Contacts / Companies** | Searchable records with deals and a call, email, meeting and note log. |
-| **Tasks** | Kanban with reminders, linked to deals. Optional reminder emails. |
-| **Team** | The owner invites people as editor or viewer, changes roles, removes people and sets the currency. |
+| **Contacts / Companies** | Searchable records. Each lead, company and deal has one **activity timeline**: emails, calls, task changes, notes and meetings, filterable, updating live. Notes can be private. |
+| **Tasks** | Kanban with due dates, reminders and priorities, linked to a deal and/or a lead. |
+| **Profile** | Connect your Gmail or Outlook mailbox, choose your email notifications, browser calling. |
+| **Team** | The owner invites people as editor or viewer, sets the currency and the calling/recording options, and sees the system status. |
 
-The first person to sign up becomes the admin and owner. Sign up first yourself. Anyone else who signs up without an invite can log in but sees nothing until the owner adds them.
+Roles: **owner** (everything), **editor** (works with all CRM data), **viewer**
+(read-only). The first person to sign up becomes the owner; anyone else needs
+an invite. Someone whose address already has a login joins from a link emailed
+to that address and chooses a new password then, so nobody can get in by
+registering a teammate's address first.
 
-## One-time setup
+## Configuration
 
-### 1. Supabase
-1. Create a project at [supabase.com](https://supabase.com).
-2. Note the **project ref** (the `xxxx` in `https://xxxx.supabase.co`), the **database password** you chose, and from Project Settings → API the **Project URL** and **anon public key**.
-3. Create a **personal access token** at supabase.com/dashboard/account/tokens.
-4. Authentication → URL Configuration: set **Site URL** to the app address (see step 2.4) and add it under **Redirect URLs**.
+In production every setting is a GitHub repository secret; the deploy
+workflow copies them into the Edge Function (see [SETUP.md](SETUP.md)). For
+local development, copy `.env.example` to `.env`; every variable is explained
+there. Only `SUPABASE_URL`, `SUPABASE_ANON_KEY` and the server's address reach
+the browser.
 
-### 2. GitHub
-1. Repository → Settings → Secrets and variables → Actions.
-2. **Secrets:** `SUPABASE_ACCESS_TOKEN` (the personal token) and `SUPABASE_DB_PASSWORD`.
-3. **Variables:** none required. `SUPABASE_PROJECT_REF`, `SUPABASE_URL` and `SUPABASE_ANON_KEY` default to this project's public Supabase values in the workflow (set them to override).
-4. Settings → Pages → Source: **GitHub Actions**. The app is published at `https://<owner>.github.io/<repo>/`. If you use a custom domain, also add an `APP_URL` variable with that address.
-5. Re-run the latest "Test and deploy" workflow (Actions tab), or push any change.
+## Local development
 
-That's it. The workflow applies the database schema, deploys the edge functions, and publishes the site.
-
-### 3. Optional: reminder emails
-When a task's reminder goes off in the CRM (at the due time, or 15 minutes, 1 hour or 1 day before), the person it's assigned to (or the owner) gets one email at the same moment. Tasks set to "No reminder" get no email. The open CRM asks for the email as soon as its reminder fires, and a schedule created by a migration checks every minute for when nobody has the CRM open. Emails start once a sender is set up:
-
-1. Create a Gmail account just for the CRM, turn on 2-Step Verification and make an app password.
-2. In GitHub, add the variable `GMAIL_USER` (that address) and the secret `GMAIL_APP_PASSWORD`, then re-run the deploy.
-
-Or use Resend instead: add the secret `RESEND_API_KEY` (and optionally the variable `REMINDER_FROM_EMAIL`). Due times use the team's time zone, saved in the CRM the first time an editor opens it. Each deploy ends with a "Check reminder emails" step that shows whether the sender can log in and whether the schedule is running.
-
-## How updates reach the cloud
-
-Push to `main` (or merge a pull request). GitHub Actions then:
-1. runs the app tests and the database security tests,
-2. applies any new files in `supabase/migrations/` with `supabase db push`,
-3. redeploys the edge functions,
-4. publishes the new `index.html` to GitHub Pages.
-
-Pull requests run the tests only. Database changes always go in a **new** migration file; never edit one that has already been deployed.
-
-## Try it without Supabase
-
-Open `index.html` in a browser. With no keys in `config.js`, the login screen offers **Open the demo**: sample contacts, deals and teammates, with you as owner. Changes stay in that browser.
-
-## Project layout
+Needs Node 24 and the Supabase CLI with Docker.
 
 ```
-index.html                         the whole app (HTML, CSS, JS)
-config.js                          Supabase URL + anon key (written by the deploy workflow)
-assets/                            logo files (also embedded in index.html)
-supabase/migrations/               database schema and row level security
-supabase/functions/team-admin/     invite and remove team members
-supabase/functions/send-due-task-emails/   optional reminder emails
-supabase/optional/                 the old manual cron script (the schedule is now a migration)
-tests/test_crm.js                  app tests (jsdom)
-tests/sql/                         database and security tests (Postgres)
-.github/workflows/deploy.yml       test and deploy pipeline
+npm ci
+supabase start            # local Supabase on ports 573xx (see supabase/config.toml)
+npm run seed:local        # test accounts from tests/fixtures/local-users.json
+npm run dev               # http://localhost:3000, with the server on /api
 ```
 
-## Data model
+`.env.local` (git-ignored) points the app at the local stack. Local emails
+(sign-up, invites, notifications) land in Mailpit at http://127.0.0.1:57324.
 
-- `workspaces`: exactly one row, the Brandigade CRM. It's created for the first person who signs up.
-- `workspace_members`: who has access, as owner, editor or viewer.
-- `profiles`: one per person; `is_platform_admin` marks the first account.
-- `workspace_state`: the CRM data as one JSON document (`board`, `companies`, `contacts`, `deals`, `activities`, `settings`).
+To run the server the way production does, inside the local Edge Function:
 
-Saving rewrites that document, so two people saving in the same instant means the last save wins. That's fine for small teams; moving contacts and deals into their own tables is the next step if the data grows large.
+```
+npm run build:edge
+supabase functions serve --no-verify-jwt --env-file supabase/functions/.env.local
+SERVER_URL=http://127.0.0.1:57321/functions/v1 npm run dev
+```
 
 ## Tests
 
 ```
-npm install
-npm test                               # app tests
-PGHOST=localhost PGUSER=postgres PGPASSWORD=postgres npm run test:db   # needs a Postgres 16 you can drop databases on
+npm run typecheck
+npm run lint
+npm run test:unit      # server logic (Vitest)
+npm run test:app       # the whole UI in jsdom against the in-browser stand-in
+npm run test:db        # RLS, grants, triggers, upgrade rehearsal (needs a Postgres you can drop databases on)
+npm run test:e2e       # Playwright: dev server + local Supabase
+```
+
+`test:db` uses `psql`; set `PSQL="docker exec -i <container> psql -U postgres"` to use a Postgres in Docker.
+For the E2E tests against the local Edge Function, also set
+`SERVER_URL=http://127.0.0.1:57321/functions/v1` and
+`E2E_API_URL=http://127.0.0.1:57321/functions/v1/api`.
+
+## Database changes
+
+Schema changes always go in a **new** file in `supabase/migrations/`; never edit
+one that has been applied. The deploy workflow applies them (`supabase db
+push`). Every new table needs RLS policies, explicit grants and a test in
+`tests/sql/`.
+
+## Project layout
+
+```
+index.html                 the app shell
+css/, js/                  styles and front-end modules (load order in index.html)
+lib/server/                server code: core helpers, email/, notifications/, voice/
+supabase/functions/api/    the Edge Function that runs lib/server (built by npm run build:edge)
+supabase/migrations/       schema, row level security, triggers, scheduler
+scripts/                   dev server, builds, deploy, seeding, setup-cron, setup-twilio
+tests/                     unit/, app/, sql/, e2e/
+docs/ARCHITECTURE.md       architecture and working agreements
+SETUP.md                   what's new, and how to switch each part on
 ```

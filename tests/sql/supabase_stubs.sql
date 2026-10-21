@@ -1,4 +1,4 @@
--- Minimal stand-ins for what Supabase provides, so the migration and RLS can be
+-- Minimal stand-ins for what Supabase provides, so the migrations and RLS can be
 -- tested on a plain Postgres (locally or in CI). Not used in production.
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
@@ -23,3 +23,11 @@ grant execute on all functions in schema auth to anon, authenticated, service_ro
 do $$ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then create publication supabase_realtime; end if;
 end $$;
+
+-- Like the production project (created before Supabase stopped doing this),
+-- every new table, sequence and function in public is granted to the API
+-- roles by default. The migrations must narrow that down themselves.
+grant usage on schema public to anon, authenticated, service_role;
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;

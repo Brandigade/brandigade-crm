@@ -1,0 +1,7 @@
+{
+  "_comment": "Test accounts for the LOCAL Supabase stack only (http://127.0.0.1:57321). Created by `npm run seed:local`. They do not exist anywhere else.",
+  "owner": { "email": "owner@crm.test", "password": "Local-Owner-7f3k9q", "name": "Olivia Owner" },
+  "editor": { "email": "editor@crm.test", "password": "Local-Editor-2m8x4v", "name": "Eddie Editor" },
+  "viewer": { "email": "viewer@crm.test", "password": "Local-Viewer-5t1z6p", "name": "Vera Viewer" },
+  "outsider": { "email": "outsider@crm.test", "password": "Local-Outsider-9c4w2r", "name": "Oscar Outsider" }
+}
