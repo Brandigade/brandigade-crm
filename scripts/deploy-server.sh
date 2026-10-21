@@ -84,7 +84,9 @@ fi
 
 echo "== Server"
 npm run --silent build:edge
-supabase functions deploy api --project-ref "$REF" --no-verify-jwt
+# --use-api: Supabase packages the function itself. (Packaging it here would
+# need a Docker image download, which GitHub's machines are sometimes refused.)
+supabase functions deploy api --project-ref "$REF" --no-verify-jwt --use-api
 
 echo "== Database"
 supabase db push --password "$SUPABASE_DB_PASSWORD" --yes
