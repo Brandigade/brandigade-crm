@@ -1,5 +1,7 @@
 # Project briefing for Claude
 
+> **Work that started before October 2026?** If your copy, branch or session is based on commit `a1945c2` or earlier (the single-file `index.html`, everything in `workspace_state`), read [docs/UPGRADE-NOTES.md](docs/UPGRADE-NOTES.md) before you change, merge or push anything. The data moved into tables. `workspace_state` is now a read-only backup, and writing to it would lose edits.
+
 Brandigade CRM: Brandigade's own shared CRM (one company, roles owner/editor/viewer). Read `docs/ARCHITECTURE.md` before changing anything; it is the source of truth for structure, schema, hooks and security rules.
 
 ## Stack
