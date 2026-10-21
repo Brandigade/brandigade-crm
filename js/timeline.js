@@ -56,12 +56,17 @@ function timelineRowToItem(r){
 
 function renderTimelineSection(box, kind, id){
   const same = timelineView && timelineView.kind === kind && timelineView.id === id;
-  // Keep whatever was being typed if the section is redrawn for the same record.
-  const prevForm = same ? {
-    type: (document.getElementById("act-type") || {}).value,
-    subject: (document.getElementById("act-subject") || {}).value,
-    body: (document.getElementById("act-body") || {}).value,
-    priv: (document.getElementById("act-private") || {}).checked,
+  // Keep whatever was being typed if the section is redrawn for the same
+  // record. The caller has usually emptied `box` already, so read the form we
+  // drew last time (still in memory), not the page.
+  const oldSec = same ? timelineView.el : null;
+  const oldField = (sel) => (oldSec && oldSec.querySelector(sel)) || {};
+  const prevForm = oldSec ? {
+    type: oldField("#act-type").value,
+    subject: oldField("#act-subject").value,
+    body: oldField("#act-body").value,
+    priv: oldField("#act-private").checked,
+    focus: timelineView.focus || null,
   } : null;
 
   const sec = document.createElement("section");
@@ -89,7 +94,20 @@ function renderTimelineSection(box, kind, id){
     sec.querySelector("#act-subject").value = prevForm.subject || "";
     sec.querySelector("#act-body").value = prevForm.body || "";
     sec.querySelector("#act-private").checked = !!prevForm.priv;
+    // Typing carries on in the field that had the cursor.
+    const field = prevForm.focus && sec.querySelector("#" + prevForm.focus);
+    if(field && (!document.activeElement || document.activeElement === document.body)){
+      field.focus();
+      if(typeof field.setSelectionRange === "function" && typeof field.value === "string") field.setSelectionRange(field.value.length, field.value.length);
+    }
   }
+  // Which form field has the cursor, so a redraw can put it back.
+  const logForm = sec.querySelector("#log-form");
+  logForm.addEventListener("focusin", (e) => { if(timelineView && timelineView.el === sec) timelineView.focus = e.target.id || null; });
+  logForm.addEventListener("focusout", () => {
+    // Removing the form for a redraw isn't the person leaving it.
+    setTimeout(() => { if(timelineView && timelineView.el === sec && !sec.contains(document.activeElement)) timelineView.focus = null; }, 0);
+  });
   sec.querySelector("#act-log-btn").addEventListener("click", logActivityFromTimeline);
   sec.querySelector("#act-subject").addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); logActivityFromTimeline(); } });
   if(currentRole === "viewer") sec.querySelector("#log-form").classList.add("hidden");

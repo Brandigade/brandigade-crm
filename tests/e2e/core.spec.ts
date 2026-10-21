@@ -124,6 +124,38 @@ test.describe("core CRM", () => {
     await editor.context().close();
   });
 
+  test("a half-typed note survives the timeline refreshing", async ({ page }) => {
+    await loginToCrm(page, "editor");
+    await gotoTab(page, "contacts");
+    await page.getByRole("button", { name: "+ New contact" }).click();
+    await page.locator("#rm-firstName").fill(`${prefix} Typist`);
+    await page.getByRole("button", { name: "Create contact" }).click();
+    // Log one note, then start the next straight away.
+    await page.locator("#act-type").selectOption("note");
+    await page.locator("#act-subject").fill(`${prefix} First note`);
+    await page.getByRole("button", { name: "Log activity" }).click();
+    await page.locator("#act-type").selectOption("note");
+    await page.locator("#act-subject").fill(`${prefix} Half typed`);
+    await page.locator("#act-private").check();
+    await page.locator("#act-body").fill("still writing");
+    // A teammate adds to the same lead meanwhile, so the timeline redraws.
+    const db = admin();
+    let lead: { id: string; workspace_id: string } | null = null;
+    await expect.poll(async () => {
+      lead = (await db.from("contacts").select("id,workspace_id").eq("first_name", `${prefix} Typist`).maybeSingle()).data;
+      return !!lead;
+    }).toBe(true);
+    await db.from("activities").insert({ workspace_id: lead!.workspace_id, type: "note", subject: `${prefix} From a teammate`, contact_id: lead!.id });
+    await expect(page.locator("#rm-timeline .tl-item", { hasText: `${prefix} From a teammate` })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#rm-timeline .tl-item", { hasText: `${prefix} First note` })).toBeVisible();
+    // Nothing typed was lost, and typing carries on in the same field.
+    await expect(page.locator("#act-type")).toHaveValue("note");
+    await expect(page.locator("#act-subject")).toHaveValue(`${prefix} Half typed`);
+    await expect(page.locator("#act-private")).toBeChecked();
+    await expect(page.locator("#act-body")).toHaveValue("still writing");
+    await expect(page.locator("#act-body")).toBeFocused();
+  });
+
   test("@mobile the CRM works on a phone-sized screen", async ({ page }) => {
     await loginToCrm(page, "owner");
     await gotoTab(page, "contacts");
