@@ -14,6 +14,7 @@ const INTEGRATION_LABELS = [
 ];
 
 async function loadSystemStatus(force){
+  if(currentRole !== "owner") return; // owner only: the server refuses everyone else
   if(systemStatusLoading) return;
   if(!force && systemStatusCache && Date.now() - systemStatusCache.at < 60000) return;
   systemStatusLoading = true;
