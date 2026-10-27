@@ -3,8 +3,8 @@
 # database and the server (Supabase), then publish the site (GitHub Pages).
 #
 # All settings are repository secrets: Settings -> Secrets and variables ->
-# Actions. To change one, edit it there, then run this workflow again
-# (Actions -> Test and deploy -> Run workflow). SETUP.md lists them.
+# Actions. After changing one, run "Apply settings" (apply-settings.yml),
+# which updates only the settings; docs/SETTINGS.md lists them.
 name: Test and deploy
 
 on:

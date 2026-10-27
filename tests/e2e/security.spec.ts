@@ -71,6 +71,26 @@ test.describe("roles and security", () => {
     expect(JSON.stringify(cfg)).not.toMatch(/key|secret|token/i);
   });
 
+  test("only the owner's Team page asks for the system status", async ({ browser }) => {
+    for (const who of ["editor", "owner"] as const) {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      const asked: string[] = [];
+      page.on("request", (r) => { if (r.url().includes("/system/status")) asked.push(r.url()); });
+      await loginToCrm(page, who);
+      await gotoTab(page, "team");
+      if (who === "owner") {
+        await expect(page.locator("#system-status-panel")).toBeVisible();
+        expect(asked.length).toBeGreaterThan(0);
+      } else {
+        await page.waitForTimeout(1500);
+        await expect(page.locator("#system-status-panel")).toHaveCount(0);
+        expect(asked).toEqual([]);
+      }
+      await context.close();
+    }
+  });
+
   test("the cron endpoint runs with the right secret", async ({ request }) => {
     const res = await request.post(api("/cron/tick"), { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
     expect(res.status()).toBe(200);

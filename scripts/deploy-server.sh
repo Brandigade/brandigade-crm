@@ -13,8 +13,11 @@
 # carries on as before. After the database is updated, problems are reported
 # as warnings and the new site is still published.
 #
-# Needs SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD and SUPABASE_PROJECT_REF.
-# Secret values are never printed.
+# SETTINGS_ONLY=1 (the "Apply settings" workflow) does step 1 and the check
+# only: no database, server or scheduler changes, and no database password.
+#
+# Needs SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF, and SUPABASE_DB_PASSWORD
+# for a full deploy. Secret values are never printed.
 set -euo pipefail
 
 REF="$SUPABASE_PROJECT_REF"
@@ -24,8 +27,12 @@ export APP_URL="${APP_URL:-https://${owner}.github.io/${repo}}"
 APP_URL="${APP_URL%/}"
 export SERVER_URL="https://${REF}.supabase.co/functions/v1"
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+settings_only=""
+case "${SETTINGS_ONLY:-}" in 1 | true | yes) settings_only=1 ;; esac
 
-supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD" >/dev/null
+if [ -z "$settings_only" ]; then
+  supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD" >/dev/null
+fi
 
 echo "== Settings"
 existing="$(supabase secrets list --project-ref "$REF" -o json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{for(const s of JSON.parse(d||"[]"))console.log(s.name)})')"
@@ -47,10 +54,14 @@ if ! has TOKEN_ENCRYPTION_KEY; then
   put TOKEN_ENCRYPTION_KEY "$key"
   echo "Created the mailbox encryption key."
 fi
-# A new scheduler secret on every deploy (stored in Supabase Vault below).
-cron_secret="$(openssl rand -hex 32)"
-echo "::add-mask::$cron_secret"
-put CRON_SECRET "$cron_secret"
+# A new scheduler secret on every full deploy (stored in Supabase Vault below).
+# Applying settings only keeps the current one, which the scheduler has.
+cron_secret=""
+if [ -z "$settings_only" ]; then
+  cron_secret="$(openssl rand -hex 32)"
+  echo "::add-mask::$cron_secret"
+  put CRON_SECRET "$cron_secret"
+fi
 
 OPTIONAL=(GMAIL_USER GMAIL_APP_PASSWORD RESEND_API_KEY NOTIFICATION_FROM_EMAIL
   GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET MICROSOFT_CLIENT_ID MICROSOFT_CLIENT_SECRET MICROSOFT_TENANT_ID
@@ -95,6 +106,11 @@ if [ "${#to_remove[@]}" -gt 0 ]; then
   echo "Removed settings no longer in GitHub: ${to_remove[*]}"
 fi
 
+if [ -n "$settings_only" ]; then
+  echo "Settings copied to Supabase. The server picks them up within a few seconds."
+  sleep "${APPLY_WAIT_SECONDS:-15}"
+else
+# Full deploy: the server, the database and the scheduler.
 echo "== Server"
 npm run --silent build:edge
 # --use-api: Supabase packages the function itself. (Packaging it here would
@@ -115,6 +131,8 @@ if SUPABASE_URL="https://${REF}.supabase.co" SUPABASE_SERVICE_ROLE_KEY="$service
 else
   echo "::warning::The scheduler couldn't be set up, so reminder emails and mailbox sync are paused. Run this workflow again."
 fi
+fi
+set +e
 
 echo "== Check"
 config=""
@@ -141,7 +159,7 @@ let d = ""; process.stdin.on("data", (c) => (d += c)).on("end", () => {
     row("Outlook mailboxes", f.outlook, "fill in MICROSOFT_CLIENT_ID + MICROSOFT_CLIENT_SECRET"),
     row("Calling", f.calling, "fill in the TWILIO_* secrets"),
     "",
-    "See SETUP.md in the repository.",
+    "How to get each setting: docs/SETTINGS.md in the repository.",
   ];
   console.log(lines.join("\n"));
 });' | tee -a "$summary"

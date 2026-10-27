@@ -1,5 +1,7 @@
 # Brandigade CRM: what's new and how to set it up
 
+The CRM is live at https://brandigade.github.io/brandigade-crm/ with all your data. Hosting stays free (GitHub Pages and your current Supabase plan).
+
 ## What's new
 
 - **Gmail and Outlook.** Each person connects their own inbox on the Profile page. Emails with a lead appear on that lead's page, and you can email a lead from the CRM. Private inboxes and private emails stay private. ([screenshot](docs/screenshots/profile.png))
@@ -12,88 +14,20 @@
   - Invites can't be taken over by someone else.
   - Two old bugs are fixed: deals couldn't be saved, and the Escape key caused an error.
 
-## What happens when you merge this
+## What's on, and what's left to switch on
 
-- The CRM stays at the same address: https://brandigade.github.io/brandigade-crm/
-- Your current data is copied over automatically. Nothing is deleted, and the old copy is kept as a backup.
-- It takes about 5 minutes. Ask the team to refresh the page afterwards.
-- Hosting stays free (GitHub Pages and your current Supabase plan).
-
-## To do
-
-### 1. Merge (required)
-
-1. Merge this pull request.
-2. Open the **Actions** tab and wait until **Test and deploy** has a green tick (about 5 minutes).
-3. Open the CRM and log in as usual.
-
-That's all that's required. Task emails already work, from the Gmail account the CRM already uses for reminders.
-
-### 2. Gmail inboxes (optional, about 15 minutes)
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project called "Brandigade CRM".
-2. Search for **Gmail API** and click **Enable**.
-3. Open **OAuth consent screen**. Choose **Internal** if you use Google Workspace (company Google accounts). Otherwise Google has to review the app first, which can take a few weeks.
-4. Open **Clients → Create client → Web application**. Under **Authorized redirect URIs** add:
-   `https://wqdysxpormmxxaakfgtu.supabase.co/functions/v1/api/email/oauth/google/callback`
-5. Put the **Client ID** and **Client secret** into the secrets `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (see "How to fill in a setting" below).
-
-Then each person goes to **Profile → Email accounts → Connect Gmail**.
-
-### 3. Outlook inboxes (optional, about 15 minutes)
-
-1. Go to [entra.microsoft.com](https://entra.microsoft.com) → **App registrations → New registration**.
-   - Name: "Brandigade CRM".
-   - Accounts: "any organizational directory and personal Microsoft accounts".
-   - Redirect URI: choose **Web**, then add `https://wqdysxpormmxxaakfgtu.supabase.co/functions/v1/api/email/oauth/microsoft/callback`
-2. Open **API permissions → Add a permission → Microsoft Graph → Delegated**. Tick `Mail.Read`, `Mail.Send`, `User.Read` and `offline_access`.
-3. Open **Certificates & secrets → New client secret** and copy the **Value**. It expires; Microsoft shows when, so set yourself a reminder to renew it.
-4. Put the **Application (client) ID** into `MICROSOFT_CLIENT_ID` and the secret's value into `MICROSOFT_CLIENT_SECRET`.
-
-Then each person goes to **Profile → Email accounts → Connect Outlook**.
-
-### 4. Calling (optional, paid)
-
-1. Sign up at [twilio.com](https://www.twilio.com) and upgrade the account. A trial account can only call numbers you have verified.
-2. Buy a phone number that supports **Voice**.
-3. From the Twilio console home page, copy the **Account SID** and **Auth Token**.
-4. Open **Account → API keys & tokens → Create API key** (Standard), and copy its **SID** and **Secret**.
-5. Fill in these secrets:
-   - `TWILIO_ACCOUNT_SID`
-   - `TWILIO_AUTH_TOKEN`
-   - `TWILIO_API_KEY_SID`
-   - `TWILIO_API_KEY_SECRET`
-   - `TWILIO_CALLER_ID`: your Twilio number, like `+14155550123`
-
-   When you run the workflow, it connects the number to the CRM for you.
-6. In the CRM, go to the **Team** page and choose the countries you call. Call recording stays off until you turn it on there. Only turn it on where recording calls is allowed.
-
-## How to fill in a setting
-
-1. In this repository, open **Settings → Secrets and variables → Actions**.
-   - Every setting on this page is already listed there.
-   - The ones not filled in yet hold the placeholder `NOT_SET`.
-2. Click the pencil next to the secret, paste the real value, and click **Update**.
-3. Open **Actions → Test and deploy → Run workflow**. The change is live in about 5 minutes.
-
-To switch a feature off, set its secrets back to `NOT_SET` and run the workflow again. Each run's summary page shows which features are on, and so does the **Team** page in the CRM.
-
-## All settings
-
-| Name | What it's for | Status |
+| Feature | Status | To switch it on |
 |---|---|---|
-| `SUPABASE_ACCESS_TOKEN` | Lets GitHub update Supabase | Already set |
-| `SUPABASE_DB_PASSWORD` | The database password | Already set |
-| `GMAIL_USER` (a variable) | The Gmail account task emails come from | Already set |
-| `GMAIL_APP_PASSWORD` | That account's app password | Already set |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Gmail inboxes | `NOT_SET`: fill in to switch on |
-| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Outlook inboxes | `NOT_SET`: fill in to switch on |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_CALLER_ID` | Calling | `NOT_SET`: fill in to switch on |
-| `MICROSOFT_TENANT_ID` | Optional: only allow your company's Microsoft accounts | `NOT_SET`: optional |
-| `RESEND_API_KEY` | Optional: send task emails through Resend instead of Gmail | `NOT_SET`: optional |
-| `NOTIFICATION_FROM_EMAIL` (a variable) | Optional: the name task emails come from, like `Brandigade CRM <crm@brandigade.com>` | `NOT_SET`: optional |
+| Everything above except the three below, including task emails | On | Nothing to do |
+| Gmail inboxes | Off | Google settings: [Gmail inboxes](docs/SETTINGS.md#gmail-inboxes), about 15 minutes, free |
+| Outlook inboxes | Off | Microsoft settings: [Outlook inboxes](docs/SETTINGS.md#outlook-inboxes), about 15 minutes, free |
+| Calling | Off | A Twilio account: [Calling](docs/SETTINGS.md#calling-twilio), about 20 minutes, paid |
 
-The CRM creates its own internal keys. You never need to set those.
+**[docs/SETTINGS.md](docs/SETTINGS.md)** lists every setting, where to get it, and how to put it in.
+
+In short:
+1. Open **Settings → Secrets and variables → Actions** and update the settings for the feature. They're already listed, holding `NOT_SET`.
+2. Open **Actions → Apply settings → Run workflow**.
 
 ## Costs
 
@@ -103,6 +37,6 @@ The CRM creates its own internal keys. You never need to set those.
 
 ## If something goes wrong
 
-- Running the workflow again is always safe.
-- If a run stops before the **Database** step, nothing changed for your team.
+- **Apply settings** and **Test and deploy** can always be run again safely.
+- If a **Test and deploy** run stops before the **Database** step, nothing changed for your team.
 - If sign-up or password-reset emails don't arrive, add your Gmail account under **Supabase → Authentication → Emails → SMTP settings**.
