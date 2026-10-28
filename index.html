@@ -422,12 +422,12 @@
     <div class="page-head"><div><div class="eyebrow">People</div><h1 class="page-title">Team</h1></div></div>
     <div class="panel" id="invite-panel" style="margin-bottom:18px;">
       <div class="panel-head"><h3>Invite a teammate</h3></div>
-      <div class="panel-sub" style="margin-bottom:12px;">They get an email with a link to set a password. They join with the role you pick here. Everyone sees every record. Editors change only their own leads, deals, companies and tasks; admins change everything; viewers change nothing.</div>
+      <div class="panel-sub" style="margin-bottom:12px;">They get an email with a link to set a password. They join with the role you pick here. Everyone sees every record. Admins change everything. Member editors change only their own leads, deals, companies and tasks. Member viewers only look.</div>
       <div class="toolbar" style="margin-bottom:0;">
         <input type="email" id="new-invite-email" placeholder="name@brandigade.com" style="flex:2;min-width:200px;" aria-label="Email to invite" />
         <select id="new-invite-role" aria-label="Role">
-          <option value="viewer">Viewer</option>
-          <option value="editor">Editor</option>
+          <option value="editor">Member · editor</option>
+          <option value="viewer">Member · viewer</option>
           <option value="admin">Admin</option>
         </select>
         <button type="button" class="btn btn-primary" id="add-invite-btn">Send invite</button>

@@ -204,6 +204,11 @@ function guardEdit(fn){
 // admins change everything; editors change what is theirs (companies they
 // created, leads and deals they own or created, tasks assigned to them or
 // created by them); viewers change nothing. Everyone reads everything.
+// How each role is named on screen. Admins change every record; members
+// change their own (editor) or nothing (viewer).
+const ROLE_LABELS = { owner: "Owner", admin: "Admin", editor: "Member · editor", viewer: "Member · viewer" };
+function roleLabel(role){ return ROLE_LABELS[role] || role; }
+function rolePillHtml(role){ return `<span class="role-pill role-${escapeHtml(role)}">${escapeHtml(roleLabel(role))}</span>`; }
 function isCrmAdmin(){ return currentRole === "owner" || currentRole === "admin"; }
 const RECORD_OWNER_FIELD = { company: null, contact: "ownerId", deal: "ownerId", task: "assignedTo" };
 function canEditRecord(kind, rec){
@@ -540,7 +545,7 @@ function renderWhoAmI(){
   whoEl.innerHTML = "";
   whoEl.appendChild(avatarEl);
   const textDiv = document.createElement("div");
-  textDiv.innerHTML = `${escapeHtml(name)}<br/><span class="role-pill role-${memberRole}">${memberRole}</span>`;
+  textDiv.innerHTML = `${escapeHtml(name)}<br/>${rolePillHtml(memberRole)}`;
   whoEl.appendChild(textDiv);
   const topbarAvatar = document.getElementById("topbar-avatar");
   if(topbarAvatar) fillAvatarEl(topbarAvatar, myProfile);
@@ -2018,13 +2023,13 @@ function renderTeam(){
 
     const roleTd = tr.children[2];
     if(person.role === "owner"){
-      roleTd.innerHTML = `<span class="role-pill role-owner">owner</span>`;
+      roleTd.innerHTML = rolePillHtml("owner");
     } else {
       const select = document.createElement("select");
       select.className = "role-select";
       ["viewer","editor","admin"].forEach(r => {
         const o = document.createElement("option");
-        o.value = r; o.textContent = r;
+        o.value = r; o.textContent = roleLabel(r);
         if(r === person.role) o.selected = true;
         select.appendChild(o);
       });
@@ -2063,7 +2068,7 @@ function renderTeam(){
   pendingInvites.forEach(inv => {
     const tr = document.createElement("tr");
     const role = ["admin", "editor"].includes(inv.role) ? inv.role : "viewer";
-    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${breakableEmail(inv.email)}</span><span class="pending-pill">Invite sent</span><div class="sub">Joins by opening the link in the email (until ${escapeHtml(fmtDay(inv.expires_at))})</div></td><td><span class="role-pill role-${role}">${role}</span></td><td></td>`;
+    tr.innerHTML = `<td></td><td><span style="font-weight:600;">${breakableEmail(inv.email)}</span><span class="pending-pill">Invite sent</span><div class="sub">Joins by opening the link in the email (until ${escapeHtml(fmtDay(inv.expires_at))})</div></td><td>${rolePillHtml(role)}</td><td></td>`;
     const avatarEl = document.createElement("div");
     avatarEl.className = "avatar";
     fillAvatarEl(avatarEl, { email: inv.email });
@@ -2149,7 +2154,7 @@ function renderProfile(){
   const nameInput = document.getElementById("profile-name-input");
   if(nameInput && document.activeElement !== nameInput) nameInput.value = myProfile.display_name || "";
   document.getElementById("profile-email-readonly").textContent = myProfile.email;
-  document.getElementById("profile-role-readonly").innerHTML = `<span class="role-pill role-${memberRole}">${memberRole}</span> in ${escapeHtml(currentWorkspace ? currentWorkspace.name : "")}${isPlatformAdmin ? ' · <span class="role-pill role-owner">platform admin</span>' : ""}`;
+  document.getElementById("profile-role-readonly").innerHTML = `${rolePillHtml(memberRole)} in ${escapeHtml(currentWorkspace ? currentWorkspace.name : "")}${isPlatformAdmin ? ' · <span class="role-pill role-owner">platform admin</span>' : ""}`;
 }
 
 async function saveDisplayName(){

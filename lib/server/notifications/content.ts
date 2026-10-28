@@ -383,8 +383,8 @@ export function teamInviteEmail(opts: { inviterName: string | null; role: "admin
   const access = opts.role === "admin"
     ? "an admin (you can see and change every lead, deal and task)"
     : opts.role === "editor"
-      ? "an editor (you can see everything, and add and change your own leads, deals and tasks)"
-      : "a viewer (read-only)";
+      ? "a member with editor access (you can see everything, and add and change your own leads, deals and tasks)"
+      : "a member with viewer access (read-only)";
   const lines = [
     `${who} invited you to ${appName()} as ${access}.`,
     "This address already has a login. The button below signs you in and adds you to the team, then asks you to choose a new password.",
