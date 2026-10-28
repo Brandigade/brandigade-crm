@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminClient, userClient } from "./supabase.js";
 import { bearerToken, forbidden, unauthorized } from "./http.js";
 
-export type Role = "owner" | "editor" | "viewer";
+export type Role = "owner" | "admin" | "editor" | "viewer";
 
 export interface AuthContext {
   userId: string;
@@ -68,5 +68,6 @@ export async function requireAuth(req: Request, opts: { roles?: Role[] } = {}): 
   };
 }
 
-export const EDITORS: Role[] = ["owner", "editor"];
+/** Everyone who may change CRM data (which records: row level security decides). */
+export const EDITORS: Role[] = ["owner", "admin", "editor"];
 export const OWNER: Role[] = ["owner"];

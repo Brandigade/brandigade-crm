@@ -29,13 +29,13 @@ export async function membershipOf(db: SupabaseClient, userId: string): Promise<
   return data ? { workspaceId: data.workspace_id as string, role: data.role as string } : null;
 }
 
-/** Owners and editors who take calls in the browser (no preferences row = yes). */
+/** Owners, admins and editors who take calls in the browser (no preferences row = yes). */
 export async function inboundClients(db: SupabaseClient, workspaceId: string): Promise<{ userId: string; identity: string }[]> {
   const { data: members, error } = await db
     .from("workspace_members")
     .select("user_id, role")
     .eq("workspace_id", workspaceId)
-    .in("role", ["owner", "editor"]);
+    .in("role", ["owner", "admin", "editor"]);
   if (error) throw error;
   const ids = (members || []).map((m) => m.user_id as string);
   if (!ids.length) return [];

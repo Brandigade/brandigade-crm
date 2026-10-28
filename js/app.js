@@ -161,7 +161,7 @@ function setRememberPref(persist){
 let sb = buildSupabaseClient(getRememberPref());
 
 let currentUser = null;     // { id, email }
-let currentRole = "viewer"; // role in the current workspace: "owner" | "editor" | "viewer"
+let currentRole = "viewer"; // role in the current workspace: "owner" | "admin" | "editor" | "viewer"
 let memberRole = "viewer";  // membership role in the CRM
 let isPlatformAdmin = false;
 let myWorkspaces = [];      // the CRM, if this person has been added: [{id, name, status, role}]
@@ -200,6 +200,40 @@ function guardEdit(fn){
     return fn.apply(this, args);
   };
 }
+// Who may change a record (the database enforces the same rule): the owner and
+// admins change everything; editors change what is theirs (companies they
+// created, leads and deals they own or created, tasks assigned to them or
+// created by them); viewers change nothing. Everyone reads everything.
+function isCrmAdmin(){ return currentRole === "owner" || currentRole === "admin"; }
+const RECORD_OWNER_FIELD = { company: null, contact: "ownerId", deal: "ownerId", task: "assignedTo" };
+function canEditRecord(kind, rec){
+  if(currentRole === "viewer") return false;
+  if(!rec || isCrmAdmin()) return true;
+  const me = currentUser && currentUser.id;
+  if(!me) return false;
+  const ownerField = RECORD_OWNER_FIELD[kind];
+  return rec.createdBy === me || (!!ownerField && rec[ownerField] === me);
+}
+// Only the creator (or an admin) may hand a record to someone else: after the
+// handover an owner who didn't create it would lose it.
+function canReassignRecord(rec){
+  if(currentRole === "viewer") return false;
+  return !rec || isCrmAdmin() || (!!currentUser && rec.createdBy === currentUser.id);
+}
+// Marks controls a person may not use on this record; applyRolePermissions() keeps them off.
+function lockControls(els, locked){
+  els.forEach(el => {
+    if(!el) return;
+    if(locked){ el.dataset.locked = "true"; el.disabled = true; }
+    else { delete el.dataset.locked; }
+  });
+}
+function recordReadOnlyNote(kind, rec){
+  const ownerField = RECORD_OWNER_FIELD[kind];
+  const who = (ownerField && rec[ownerField]) || rec.createdBy;
+  return who ? `Only ${personName(who)}, the owner or an admin can change this.` : "Only the owner or an admin can change this.";
+}
+
 function guardOwnerOnly(fn){
   return function(...args){
     if(currentRole !== "owner") return;
@@ -618,12 +652,13 @@ function applyRolePermissions(){
   const isViewer = currentRole === "viewer";
   document.querySelectorAll("main input, main select, main textarea, main button").forEach(el => {
     if(el.dataset.alwaysEnabled) return;
-    el.disabled = isViewer;
+    el.disabled = isViewer || el.dataset.locked === "true";
   });
-  document.querySelectorAll(".card").forEach(el => { el.draggable = !isViewer; });
+  document.querySelectorAll(".card").forEach(el => { el.draggable = !isViewer && el.dataset.locked !== "true"; });
   document.querySelectorAll(".card-del, .btn-del").forEach(el => {
-    el.style.pointerEvents = isViewer ? "none" : "";
-    el.style.opacity = isViewer ? "0.3" : "";
+    const off = isViewer || el.dataset.locked === "true";
+    el.style.pointerEvents = off ? "none" : "";
+    el.style.opacity = off ? "0.3" : "";
   });
   document.querySelectorAll(".role-select").forEach(el => { el.disabled = currentRole !== "owner"; });
   ["ws-currency"].forEach(id => { const el = document.getElementById(id); if(el) el.disabled = currentRole !== "owner"; });
@@ -1039,7 +1074,7 @@ function renderPipeline(){
 
 function moveDealToStage(id, stageId){
   const deal = dealById(id);
-  if(!deal || deal.stage === stageId) return;
+  if(!deal || deal.stage === stageId || !canEditRecord("deal", deal)) return;
   deal.stage = stageId;
   if(stageId === "won" || stageId === "lost") deal.closedAt = todayIso();
   else delete deal.closedAt;
@@ -1050,7 +1085,8 @@ function moveDealToStage(id, stageId){
 function makeDealCard(d){
   const card = document.createElement("div");
   card.className = "card";
-  card.draggable = true;
+  card.draggable = canEditRecord("deal", d);
+  if(!card.draggable) card.dataset.locked = "true";
   card.tabIndex = 0;
   card.dataset.id = d.id;
   const co = companyById(d.companyId);
@@ -1232,6 +1268,20 @@ function openRecordModal(kind, id, prefill){
   document.getElementById("rm-save-btn").textContent = record ? "Save changes" : "Create " + def.noun;
   renderRecordActions(kind, record);
   renderRecordRelated();
+  const editable = canEditRecord(kind, record);
+  lockControls([...form.querySelectorAll("input, select, textarea")], !editable);
+  if(editable && !canReassignRecord(record)) lockControls([document.getElementById("rm-ownerId")], true);
+  document.getElementById("rm-save-btn").classList.toggle("hidden", !editable && currentRole !== "viewer");
+  if(!editable) document.getElementById("rm-delete-btn").classList.add("hidden");
+  let note = document.getElementById("rm-readonly-note");
+  if(!note){
+    note = document.createElement("div");
+    note.id = "rm-readonly-note";
+    note.className = "panel-sub";
+    form.parentNode.insertBefore(note, form);
+  }
+  note.textContent = record && !editable && currentRole !== "viewer" ? recordReadOnlyNote(kind, record) : "";
+  note.classList.toggle("hidden", !note.textContent);
   document.getElementById("record-modal-overlay").classList.remove("hidden");
   applyRolePermissions();
   const first = form.querySelector("input, select");
@@ -1284,14 +1334,15 @@ const saveRecordFromModal = guardEdit(function(){
   let record;
   if(id){
     record = state[def.collection].find(r => r.id === id);
-    if(!record) return;
+    if(!record || !canEditRecord(kind, record)) return;
+    if(!canReassignRecord(record) && "ownerId" in fields) fields.ownerId = record.ownerId;
     if(kind === "deal" && record.stage !== fields.stage){
       if(fields.stage === "won" || fields.stage === "lost") fields.closedAt = todayIso();
       else record.closedAt = undefined;
     }
     Object.assign(record, fields);
   } else {
-    record = { id: nextId(def.idKind, def.prefix), ...fields, createdAt: new Date().toISOString() };
+    record = { id: nextId(def.idKind, def.prefix), ...fields, createdBy: currentUser ? currentUser.id : null, createdAt: new Date().toISOString() };
     if(kind === "deal" && (fields.stage === "won" || fields.stage === "lost")) record.closedAt = todayIso();
     state[def.collection].push(record);
   }
@@ -1312,7 +1363,7 @@ const deleteRecordFromModal = guardEdit(async function(){
   if(!kind || !id) return;
   const def = RECORD_KINDS[kind];
   const record = state[def.collection].find(r => r.id === id);
-  if(!record) return;
+  if(!record || !canEditRecord(kind, record)) return;
   let extra = "";
   if(kind === "company"){
     const n = state.contacts.filter(c => c.companyId === id).length;
@@ -1320,13 +1371,16 @@ const deleteRecordFromModal = guardEdit(async function(){
   }
   if(!await confirmDialog(`Delete ${def.title(record)}? This can't be undone.${extra}`, "Delete")) return;
   state[def.collection] = state[def.collection].filter(r => r.id !== id);
+  // The database clears links to the deleted record itself (on delete set null),
+  // including on records this person can't edit, so only the screen changes here.
   if(kind === "company"){
-    state.contacts.forEach(c => { if(c.companyId === id) c.companyId = ""; });
-    state.deals.forEach(d => { if(d.companyId === id) d.companyId = ""; });
+    changeLocallyOnly("contacts", c => c.companyId === id, c => { c.companyId = ""; });
+    changeLocallyOnly("deals", d => d.companyId === id, d => { d.companyId = ""; });
   } else if(kind === "contact"){
-    state.deals.forEach(d => { if(d.contactId === id) d.contactId = ""; });
+    changeLocallyOnly("deals", d => d.contactId === id, d => { d.contactId = ""; });
+    changeLocallyOnly("board", t => t.contactId === id, t => { t.contactId = null; });
   } else if(kind === "deal"){
-    state.board.forEach(t => { if(t.dealId === id) t.dealId = null; });
+    changeLocallyOnly("board", t => t.dealId === id, t => { t.dealId = null; });
   }
   // The database deletes the notes that only belonged to this lead or deal
   // (any author's); here they are just dropped from the screen.
@@ -1477,7 +1531,7 @@ function renderBoard(){
       body.classList.remove("drag-over");
       const id = e.dataTransfer.getData("text/plain");
       const task = state.board.find(t => t.id === id);
-      if(task){ task.column = col.id; saveState(); renderBoard(); renderDashboard(); }
+      if(task && canEditRecord("task", task)){ task.column = col.id; saveState(); renderBoard(); renderDashboard(); }
     }));
     board.appendChild(colDiv);
   });
@@ -1512,7 +1566,9 @@ function taskLead(t){
 function makeCard(t){
   const card = document.createElement("div");
   card.className = "card";
-  card.draggable = true;
+  const editable = canEditRecord("task", t);
+  card.draggable = editable;
+  if(!editable) card.dataset.locked = "true";
   card.tabIndex = 0;
   card.dataset.id = t.id;
   const priority = t.priority || "none";
@@ -1531,6 +1587,7 @@ function makeCard(t){
     <div class="card-title">${escapeHtml(t.title)}</div>
     <div class="card-meta">${escapeHtml(t.workstream)}${context ? " · " + escapeHtml(context) : ""}</div>
     <div class="card-meta-row">${metaRowHtml}</div>`;
+  if(!editable) card.querySelector(".card-del").dataset.locked = "true";
   card.addEventListener("dragstart", (e) => {
     e.dataTransfer.setData("text/plain", t.id);
     setTimeout(() => card.style.opacity = "0.4", 0);
@@ -1538,6 +1595,7 @@ function makeCard(t){
   card.addEventListener("dragend", () => card.style.opacity = "1");
   card.querySelector(".card-del").addEventListener("click", guardEdit((e) => {
     e.stopPropagation();
+    if(!canEditRecord("task", t)) return;
     state.board = state.board.filter(x => x.id !== t.id);
     saveState(); renderBoard(); renderDashboard();
   }));
@@ -1684,7 +1742,14 @@ function openTaskModal(taskId, prefill){
   document.getElementById("tm-contact").value = task ? (task.contactId || "") : (prefill.contactId || "");
   document.getElementById("tm-notes").value = task ? (task.notes || "") : (prefill.notes || "");
   document.getElementById("tm-delete-btn").classList.toggle("hidden", !task);
-  document.getElementById("task-modal-overlay").classList.remove("hidden");
+  const editable = canEditRecord("task", task);
+  const overlay = document.getElementById("task-modal-overlay");
+  lockControls([...overlay.querySelectorAll(".task-modal-body input, .task-modal-body select, .task-modal-body textarea")], !editable);
+  if(editable && !canReassignRecord(task)) lockControls([document.getElementById("tm-assigned")], true);
+  document.getElementById("tm-save-btn").classList.toggle("hidden", !editable && currentRole !== "viewer");
+  if(!editable) document.getElementById("tm-delete-btn").classList.add("hidden");
+  document.getElementById("task-modal-title").textContent = task ? (editable ? "Edit task" : "Task") : "New task";
+  overlay.classList.remove("hidden");
   applyRolePermissions();
 }
 
@@ -1716,9 +1781,11 @@ const saveTaskFromModal = guardEdit(function(){
   }
   if(editingTaskId){
     const task = state.board.find(t => t.id === editingTaskId);
-    if(task) Object.assign(task, fields);
+    if(!task || !canEditRecord("task", task)) return;
+    if(!canReassignRecord(task)) fields.assignedTo = task.assignedTo;
+    Object.assign(task, fields);
   } else {
-    state.board.push({ id: newId(), ...fields });
+    state.board.push({ id: newId(), ...fields, createdBy: currentUser ? currentUser.id : null });
   }
   saveState(); renderBoard(); renderDashboard();
   checkReminders();
@@ -1727,6 +1794,8 @@ const saveTaskFromModal = guardEdit(function(){
 
 const deleteTaskFromModal = guardEdit(function(){
   if(!editingTaskId) return;
+  const task = state.board.find(t => t.id === editingTaskId);
+  if(!task || !canEditRecord("task", task)) return;
   state.board = state.board.filter(x => x.id !== editingTaskId);
   saveState(); renderBoard(); renderDashboard();
   closeTaskModal();
@@ -1953,7 +2022,7 @@ function renderTeam(){
     } else {
       const select = document.createElement("select");
       select.className = "role-select";
-      ["viewer","editor"].forEach(r => {
+      ["viewer","editor","admin"].forEach(r => {
         const o = document.createElement("option");
         o.value = r; o.textContent = r;
         if(r === person.role) o.selected = true;
@@ -1993,7 +2062,7 @@ function renderTeam(){
   if(currentRole !== "owner") return;
   pendingInvites.forEach(inv => {
     const tr = document.createElement("tr");
-    const role = inv.role === "editor" ? "editor" : "viewer";
+    const role = ["admin", "editor"].includes(inv.role) ? inv.role : "viewer";
     tr.innerHTML = `<td></td><td><span style="font-weight:600;">${breakableEmail(inv.email)}</span><span class="pending-pill">Invite sent</span><div class="sub">Joins by opening the link in the email (until ${escapeHtml(fmtDay(inv.expires_at))})</div></td><td><span class="role-pill role-${role}">${role}</span></td><td></td>`;
     const avatarEl = document.createElement("div");
     avatarEl.className = "avatar";

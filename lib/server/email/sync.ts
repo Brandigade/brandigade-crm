@@ -160,7 +160,7 @@ export async function backfillContact(job: Job, ctx: JobContext): Promise<JobOut
   let mailboxes = 0;
   for (const account of accounts) {
     const role = await repo().memberRole(account.workspace_id, account.user_id);
-    if (role !== "owner" && role !== "editor") continue;
+    if (role !== "owner" && role !== "admin" && role !== "editor") continue;
     if (Date.now() >= ctx.deadline - 10_000) throw new RetryJobLater(15_000, "Ran out of time; continuing shortly");
     const auth = new MailboxAuth(account);
     try {

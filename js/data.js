@@ -32,7 +32,7 @@ const DATA_TABLES = [
     }),
     fromRow: r => ({
       id: r.id, name: r.name || "", industry: r.industry || "", website: r.website || "", phone: r.phone || "",
-      city: r.city || "", notes: r.notes || "", createdAt: r.created_at, legacyId: r.legacy_id || null,
+      city: r.city || "", notes: r.notes || "", createdBy: r.created_by || null, createdAt: r.created_at, legacyId: r.legacy_id || null,
     }),
   },
   {
@@ -46,7 +46,7 @@ const DATA_TABLES = [
       id: r.id, firstName: r.first_name || "", lastName: r.last_name || "", email: r.email || "", phone: r.phone || "",
       title: r.title || "", companyId: r.company_id || "", status: r.status || "lead", ownerId: r.owner_id || "",
       source: r.source || "", notes: r.notes || "", lastActivityAt: isoOrNull(r.last_activity_at),
-      createdAt: r.created_at, legacyId: r.legacy_id || null,
+      createdBy: r.created_by || null, createdAt: r.created_at, legacyId: r.legacy_id || null,
     }),
   },
   {
@@ -60,7 +60,7 @@ const DATA_TABLES = [
       const d = {
         id: r.id, title: r.title || "", companyId: r.company_id || "", contactId: r.contact_id || "",
         value: Number(r.value) || 0, stage: r.stage || "lead", ownerId: r.owner_id || "", closeDate: r.close_date || "",
-        notes: r.notes || "", createdAt: r.created_at, legacyId: r.legacy_id || null,
+        notes: r.notes || "", createdBy: r.created_by || null, createdAt: r.created_at, legacyId: r.legacy_id || null,
       };
       if(r.closed_at) d.closedAt = r.closed_at;
       return d;
@@ -388,6 +388,19 @@ function scheduleRemoteRender(coll){
 
 // Drops records from the screen without asking the database to delete them
 // (for rows the database removes itself, e.g. a deleted lead's notes).
+// For changes the database makes by itself (a deleted company's link cleared
+// on its leads and deals): update the screen without saving those rows again,
+// which could be rows the person isn't allowed to edit.
+function changeLocallyOnly(coll, predicate, change){
+  const t = DATA_TABLE_BY_COLL[coll];
+  const snap = snapFor(t);
+  state[coll].forEach(rec => {
+    if(!predicate(rec)) return;
+    change(rec);
+    if(snap.has(rec.id)) snap.set(rec.id, rowJson(t, rec));
+  });
+}
+
 function forgetLocalRecords(coll, predicate){
   const t = DATA_TABLE_BY_COLL[coll];
   const snap = snapFor(t);

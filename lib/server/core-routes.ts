@@ -36,7 +36,7 @@ interface OpenInvite {
   id: string;
   workspace_id: string;
   email: string;
-  role: "editor" | "viewer";
+  role: "admin" | "editor" | "viewer";
 }
 
 async function openInvite(admin: SupabaseClient, token: string): Promise<OpenInvite | null> {
@@ -55,7 +55,7 @@ async function openInvite(admin: SupabaseClient, token: string): Promise<OpenInv
 /** Creates (or replaces) the pending invite and emails the join link. */
 async function inviteExistingAccount(
   admin: SupabaseClient,
-  opts: { workspaceId: string; email: string; role: "editor" | "viewer"; invitedBy: string; inviterName: string | null },
+  opts: { workspaceId: string; email: string; role: "admin" | "editor" | "viewer"; invitedBy: string; inviterName: string | null },
 ): Promise<"crm" | "supabase"> {
   const token = randomToken(32);
   await admin.from("workspace_invites").delete().eq("workspace_id", opts.workspaceId).eq("email", opts.email).is("accepted_at", null);
@@ -119,7 +119,7 @@ async function teamAdmin(req: Request): Promise<Response> {
 
   if (body.action === "invite") {
     const email = str(body.email, 320).trim().toLowerCase();
-    const role = body.role === "editor" ? "editor" : "viewer";
+    const role: "admin" | "editor" | "viewer" = body.role === "admin" ? "admin" : body.role === "editor" ? "editor" : "viewer";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw badRequest("A valid email is required");
 
     // Already has an account? Supabase stores addresses lowercased, so match

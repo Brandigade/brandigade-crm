@@ -248,7 +248,7 @@ export async function oauthCallback(req: Request, provider: Provider): Promise<R
     if (!code || code.length > 4096) return fail("invalid_request");
     if (!providerConfigured(provider)) return fail("not_configured");
     const role = await repo().memberRole(row.workspace_id, row.user_id);
-    if (role !== "owner" && role !== "editor") return fail("forbidden");
+    if (role !== "owner" && role !== "admin" && role !== "editor") return fail("forbidden");
 
     let tokens: TokenResponse;
     try {

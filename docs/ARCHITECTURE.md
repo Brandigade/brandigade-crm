@@ -36,7 +36,7 @@ Rules for feature sessions:
 
 ## 3. Data model (Supabase)
 
-All CRM tables have `workspace_id` (the single Brandigade CRM workspace) and RLS. Roles come from `workspace_members.role`: **owner** (everything), **editor** (read/write CRM data), **viewer** (read-only). Helper functions: `crm_can_read(ws)`, `crm_can_write(ws)`, `is_workspace_owner(ws)`, `is_workspace_member(ws)`.
+All CRM tables have `workspace_id` (the single Brandigade CRM workspace) and RLS. Roles come from `workspace_members.role`: **owner** (everything), **admin** (reads and changes every record; the team and settings stay with the owner), **editor** (reads every record, creates records, changes and deletes only their own), **viewer** (read-only). "Their own": companies they created, leads and deals they own or created, tasks assigned to them or created by them; records with neither are left to the owner and admins (migration `20261028100000_record_ownership.sql`). Only a record's creator or an admin can hand it to someone else. Helper functions: `crm_can_read(ws)`, `crm_can_write(ws)` (may create), `crm_is_admin(ws)`, `crm_can_edit_record(ws, owner, creator)`, `is_workspace_owner(ws)`, `is_workspace_member(ws)`. In the browser the same rule is `canEditRecord(kind, rec)` / `canReassignRecord(rec)` (`js/app.js`).
 
 | Table | What | Who writes |
 |---|---|---|

@@ -377,10 +377,14 @@ export function testEmail(opts: { recipientName: string; senderLabel: string; no
 }
 
 /** The join link for someone who already has a login (see core-routes.ts). */
-export function teamInviteEmail(opts: { inviterName: string | null; role: "editor" | "viewer"; link: string; expiresDays: number }): EmailContent {
+export function teamInviteEmail(opts: { inviterName: string | null; role: "admin" | "editor" | "viewer"; link: string; expiresDays: number }): EmailContent {
   const who = opts.inviterName || "The CRM owner";
   const heading = `Join ${appName()}`;
-  const access = opts.role === "editor" ? "an editor (you can add and change leads, deals and tasks)" : "a viewer (read-only)";
+  const access = opts.role === "admin"
+    ? "an admin (you can see and change every lead, deal and task)"
+    : opts.role === "editor"
+      ? "an editor (you can see everything, and add and change your own leads, deals and tasks)"
+      : "a viewer (read-only)";
   const lines = [
     `${who} invited you to ${appName()} as ${access}.`,
     "This address already has a login. The button below signs you in and adds you to the team, then asks you to choose a new password.",

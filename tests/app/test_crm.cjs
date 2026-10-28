@@ -294,6 +294,41 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
   await sleep(800);
   ok(!u6.d.getElementById("record-modal-overlay").classList.contains("hidden") && u6.d.getElementById("rm-heading").textContent === "Linked", "?contact=<id> opens the lead record");
 
+  // ---------- G. Editors change only their own records ----------
+  const ownStore = freshStore();
+  ownStore.workspaces[0].settings = { seeded: true, timezone: "UTC" };
+  ownStore.workspace_members.push({ workspace_id: "ws1", user_id: "u2", role: "editor", invited: false, created_at: "2026-01-02T00:00:00Z" });
+  ownStore.contacts.push(
+    { id: "bbbbbbbb-0000-4000-8000-000000000001", workspace_id: "ws1", first_name: "Owners", status: "lead", owner_id: "u1", created_by: "u1", created_at: "2026-01-01T00:00:00Z" },
+    { id: "bbbbbbbb-0000-4000-8000-000000000002", workspace_id: "ws1", first_name: "Mine", status: "lead", owner_id: "u2", created_by: "u1", created_at: "2026-01-01T00:00:00Z" });
+  ownStore.tasks.push(
+    { id: "bbbbbbbb-0000-4000-8000-000000000003", workspace_id: "ws1", title: "Owner task", status: "todo", reminder: "none", priority: "none", workstream: "General", assigned_to: "u1", created_by: "u1", created_at: "2026-01-01T00:00:00Z" },
+    { id: "bbbbbbbb-0000-4000-8000-000000000004", workspace_id: "ws1", title: "My task", status: "todo", reminder: "none", priority: "none", workstream: "General", assigned_to: "u2", created_by: "u1", created_at: "2026-01-01T00:00:00Z" });
+  const u7 = boot(raw, { connected: true, user: { id: "u2", email: "ed@x.co" }, store: ownStore });
+  await sleep(900);
+  ok(u7.w.eval("currentRole") === "editor" && u7.w.eval("state.contacts.length") === 2, "editor sees everyone's leads");
+  u7.w.eval('openRecordModal("contact", "bbbbbbbb-0000-4000-8000-000000000001")');
+  ok(u7.d.getElementById("rm-firstName").disabled && u7.d.getElementById("rm-save-btn").classList.contains("hidden") &&
+     u7.d.getElementById("rm-delete-btn").classList.contains("hidden") && /owner or an admin/.test(u7.d.getElementById("rm-readonly-note").textContent),
+     "someone else's lead opens read-only for an editor");
+  u7.w.eval("applyRolePermissions()");
+  ok(u7.d.getElementById("rm-firstName").disabled, "read-only fields stay locked after a redraw");
+  u7.w.eval("closeRecordModal()");
+  u7.w.eval('openRecordModal("contact", "bbbbbbbb-0000-4000-8000-000000000002")');
+  ok(!u7.d.getElementById("rm-firstName").disabled && !u7.d.getElementById("rm-save-btn").classList.contains("hidden") && u7.d.getElementById("rm-ownerId").disabled,
+     "an editor edits a lead they own but can't hand it to someone else");
+  u7.w.eval("closeRecordModal()");
+  ok(u7.w.eval('canEditRecord("contact", state.contacts.find(c => c.firstName === "Mine"))') && !u7.w.eval('canEditRecord("contact", state.contacts.find(c => c.firstName === "Owners"))'), "edit rights follow the lead's owner");
+  u7.w.eval("switchTab('board')"); await sleep(100);
+  const cards = [...u7.d.querySelectorAll("#board .card")];
+  const cardFor = (title) => cards.find(c => c.querySelector(".card-title").textContent === title);
+  ok(cardFor("Owner task") && !cardFor("Owner task").draggable && cardFor("My task") && cardFor("My task").draggable, "editors move only their own tasks");
+  u7.w.eval('openTaskModal("bbbbbbbb-0000-4000-8000-000000000003")');
+  ok(u7.d.getElementById("tm-title").disabled && u7.d.getElementById("tm-save-btn").classList.contains("hidden"), "someone else's task opens read-only");
+  u7.w.eval("closeTaskModal()");
+  u7.w.eval("switchTab('team')"); await sleep(50);
+  ok([...u7.d.querySelectorAll("#new-invite-role option")].some(o => o.value === "admin"), "the owner can invite an admin");
+
   console.log(fail ? `FAILED (${fail})` : "ALL PASS");
   process.exit(fail ? 1 : 0);
 })();

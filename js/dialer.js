@@ -57,7 +57,7 @@ window.DialerUI = window.DialerUI || {};
   };
 
   /* ---------- Small helpers ---------- */
-  const canCall = () => currentRole === "owner" || currentRole === "editor";
+  const canCall = () => currentRole === "owner" || currentRole === "admin" || currentRole === "editor";
   const isDemo = () => typeof DEMO !== "undefined" && DEMO;
   const callingLive = () => !!(appFeatures && appFeatures.calling) && canCall() && !isDemo();
   const recordingOn = () => !!(state.settings && state.settings.callRecording === "on");
