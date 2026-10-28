@@ -120,6 +120,21 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
   d.getElementById("rm-close").click();
   ok(txt("d-pipeline-value").replace(/[^0-9]/g, "") === "25000" && txt("d-weighted").replace(/[^0-9]/g, "") === "12500", "pipeline and weighted forecast");
   ok(store.deals.length === 1 && store.deals[0].contact_id === ct.id && store.deals[0].company_id === co.id && Number(store.deals[0].value) === 25000, "deal saved with links");
+  w.eval(`openRecordModal("deal", state.deals[0].id)`);
+  const relText = () => d.getElementById("rm-related").textContent;
+  ok(relText().includes("Globex <b>Co</b>") && relText().includes("Rana"), "a deal page shows its company and contact");
+  w.eval(`openRecordModal("company", state.companies[0].id)`);
+  ok(relText().includes("Rana") && relText().includes("Rebrand"), "a company page shows its people and deals");
+  d.getElementById("rm-close").click();
+  w.eval(`state.contacts.push({ id: newId(), firstName: "Omar", email: "omar@x.co", status: "lead", ownerId: "u1", createdBy: "u1" }); saveState();`); await sleep(400);
+  w.eval(`openRecordModal("company", state.companies[0].id)`);
+  const picker = d.querySelector('#rm-related .rm-link-picker[aria-label="Link an existing contact…"]');
+  const omar = w.eval("state.contacts.find(c => c.firstName === 'Omar').id");
+  picker.value = omar; picker.dispatchEvent(new w.Event("change")); await sleep(600);
+  ok(w.eval("state.contacts.find(c => c.firstName === 'Omar').companyId") === co.id && relText().includes("Omar"), "linking an existing contact to a company from its page");
+  w.eval(`openRecordModal("contact", "${omar}")`);
+  ok(relText().includes("Globex <b>Co</b>") && d.getElementById("rm-companyId").value === co.id, "the contact page then shows the company");
+  d.getElementById("rm-close").click();
   nav("pipeline");
   const deal = w.eval("state.deals[0]");
   const ev = new w.Event("drop", { bubbles: true, cancelable: true }); ev.dataTransfer = { getData: () => deal.id };
@@ -129,7 +144,7 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
 
   nav("contacts");
   for (const n of ["Two", "Three", "Four"]) { d.getElementById("add-contact-btn").click(); d.getElementById("rm-firstName").value = n; d.getElementById("rm-save-btn").click(); await sleep(450); d.getElementById("rm-close").click(); }
-  ok(w.eval("state.contacts.length") === 4 && store.contacts.length === 4, "no contact limit");
+  ok(w.eval("state.contacts.length") === 5 && store.contacts.length === 5, "no contact limit");
 
   // team
   nav("team");

@@ -1101,7 +1101,7 @@ function makeDealCard(d){
   const overdue = d.closeDate && OPEN_STAGES.includes(d.stage) && d.closeDate < todayIso();
   card.innerHTML = `
     <div class="card-title">${escapeHtml(d.title)}</div>
-    <div class="card-meta">${escapeHtml(co ? co.name : "No company")}</div>
+    <div class="card-meta">${escapeHtml([co ? co.name : "No company", contactById(d.contactId) ? contactName(contactById(d.contactId)) : ""].filter(Boolean).join(" · "))}</div>
     <div class="card-value">${fmtMoney(d.value)}</div>
     <div class="card-meta-row">
       ${d.closeDate ? `<span class="card-due-badge${overdue ? " overdue" : ""}">${fmtDay(d.closeDate)}</span>` : ""}
@@ -1120,6 +1120,12 @@ function makeDealCard(d){
    CONTACTS
 ============================================================ */
 function statusLabel(id){ const s = CONTACT_STATUSES.find(x => x.id === id); return s ? s.label : "Lead"; }
+
+// "2 open deals" under a contact's company in the contacts list.
+function dealCount(contactId){
+  const n = state.deals.filter(d => d.contactId === contactId && OPEN_STAGES.includes(d.stage)).length;
+  return n ? `<div class="sub">${n} open deal${n === 1 ? "" : "s"}</div>` : "";
+}
 
 function renderContacts(){
   const q = (document.getElementById("contacts-search").value || "").trim().toLowerCase();
@@ -1149,7 +1155,7 @@ function renderContacts(){
     tr.dataset.id = c.id;
     tr.innerHTML = `
       <td><div class="cell-name"><div class="avatar avatar-sm">${escapeHtml(initials(contactName(c), c.email))}</div><div><div style="font-weight:600;">${escapeHtml(contactName(c))}</div><div class="sub">${escapeHtml(c.title || "")}</div></div></div></td>
-      <td>${escapeHtml(co ? co.name : "")}</td>
+      <td>${co ? `<button type="button" class="rm-link" data-always-enabled="true" data-company="${escapeHtml(co.id)}">${escapeHtml(co.name)}</button>` : ""}${dealCount(c.id)}</td>
       <td>${escapeHtml(c.email || "")}</td>
       <td style="white-space:nowrap;" class="phone-cell">${escapeHtml(c.phone || "")}</td>
       <td><span class="pill pill-${escapeHtml(c.status || "lead")}">${statusLabel(c.status)}</span></td>
@@ -1157,6 +1163,8 @@ function renderContacts(){
       <td class="sub" style="white-space:nowrap;">${touched ? relTime(touched) : "Never"}</td>`;
     // e.g. a click-to-call button next to the number (js/dialer.js)
     CRMHooks.emit("contact:row-actions", c).flat().forEach(el => { if(el instanceof window.Node) tr.querySelector(".phone-cell").appendChild(el); });
+    const coLink = tr.querySelector("[data-company]");
+    if(coLink) coLink.addEventListener("click", (e) => { e.stopPropagation(); openRecordModal("company", co.id); });
     tr.addEventListener("click", () => openRecordModal("contact", c.id));
     tbody.appendChild(tr);
   });
@@ -1271,6 +1279,10 @@ function openRecordModal(kind, id, prefill){
     return `<div class="tm-field"><label for="${fid}">${f.label}${kind === "deal" && f.key === "value" ? " (" + escapeHtml(state.settings.currency) + ")" : ""}</label>${input}</div>`;
   }).join("")}</div>`).join("");
 
+  if(kind === "deal"){
+    const ctSel = document.getElementById("rm-contactId"), coSel = document.getElementById("rm-companyId");
+    ctSel.addEventListener("change", () => { const ct = contactById(ctSel.value); if(ct && ct.companyId && !coSel.value) coSel.value = ct.companyId; });
+  }
   document.getElementById("rm-layout").classList.toggle("single", !record);
   document.getElementById("rm-about-title").textContent = record ? "Details" : "";
   document.getElementById("rm-about-title").classList.toggle("hidden", !record);
@@ -1504,6 +1516,21 @@ function renderRecordSummary(kind, record){
   box.innerHTML = html;
 }
 
+// Links records together from a record page (a contact to a company, a deal
+// to a contact...). Fields of the open record are copied into its form too,
+// so "Save changes" doesn't put the old value back.
+const linkRecords = guardEdit(function(coll, rec, changes){
+  const kind = { contacts:"contact", deals:"deal", companies:"company" }[coll];
+  if(!rec || !canEditRecord(kind, rec)) return;
+  Object.assign(rec, changes);
+  if(openRecord.kind === kind && openRecord.id === rec.id){
+    Object.keys(changes).forEach(k => { const el = document.getElementById("rm-" + k); if(el) el.value = changes[k] || ""; });
+  }
+  saveState();
+  renderAll();
+  renderRecordRelated();
+});
+
 function renderRecordRelated(){
   const { kind, id } = openRecord;
   const box = document.getElementById("rm-related");
@@ -1515,51 +1542,133 @@ function renderRecordRelated(){
   renderRecordSummary(kind, current);
   if(!kind || !id) return;
 
+  const canWrite = currentRole !== "viewer";
   const addSection = (title, actionLabel, onAction) => {
     const sec = document.createElement("section");
-    sec.innerHTML = `<div class="panel-head" style="margin-bottom:4px;"><h4>${title}</h4>${actionLabel ? `<button type="button" class="panel-link">${actionLabel}</button>` : ""}</div><div class="mini-list"></div>`;
-    if(actionLabel) sec.querySelector(".panel-link").addEventListener("click", guardEdit(onAction));
+    sec.innerHTML = `<div class="panel-head" style="margin-bottom:4px;"><h4>${title}</h4>${actionLabel && canWrite ? `<button type="button" class="panel-link">${actionLabel}</button>` : ""}</div><div class="mini-list"></div>`;
+    if(actionLabel && canWrite) sec.querySelector(".panel-link").addEventListener("click", guardEdit(onAction));
     box.appendChild(sec);
     return sec.querySelector(".mini-list");
+  };
+  const empty = (list, text) => { list.innerHTML = `<div class="empty-note">${text}</div>`; };
+  // "Link an existing ..." under a list: records this person may change.
+  const addPicker = (list, label, choices, onPick) => {
+    if(!canWrite || !choices.length) return;
+    const sel = document.createElement("select");
+    sel.className = "rm-link-picker";
+    sel.setAttribute("aria-label", label);
+    sel.innerHTML = `<option value="">${escapeHtml(label)}</option>` + choices.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
+    sel.addEventListener("change", () => { if(sel.value) onPick(sel.value); });
+    list.parentNode.appendChild(sel);
+  };
+  const editable = (k, list) => list.filter(r => canEditRecord(k, r));
+  const byName = (a, b) => a.label.localeCompare(b.label);
+  const contactRow = (c, note) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.tabIndex = 0;
+    row.innerHTML = `<div class="avatar avatar-sm">${escapeHtml(initials(contactName(c), c.email))}</div><div class="lr-main"><div class="lr-title">${escapeHtml(contactName(c))}</div><div class="lr-sub">${escapeHtml(note || c.title || c.email || "")}</div></div><span class="pill pill-${escapeHtml(c.status || "lead")}">${statusLabel(c.status)}</span>`;
+    row.addEventListener("click", () => openRecordModal("contact", c.id));
+    return row;
+  };
+  const companyRow = (co) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.tabIndex = 0;
+    const people = state.contacts.filter(c => c.companyId === co.id).length;
+    row.innerHTML = `<div class="rm-mini-logo" aria-hidden="true">${escapeHtml(initials(co.name))}</div><div class="lr-main"><div class="lr-title">${escapeHtml(co.name)}</div><div class="lr-sub">${escapeHtml([co.industry, co.city, people ? people + (people === 1 ? " person" : " people") : ""].filter(Boolean).join(" · "))}</div></div>`;
+    row.addEventListener("click", () => openRecordModal("company", co.id));
+    return row;
+  };
+  const taskRow = (t) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.tabIndex = 0;
+    const due = formatDueBadge(t);
+    const col = COLUMNS.find(c => c.id === t.column) || COLUMNS[0];
+    row.innerHTML = `<div class="lr-main"><div class="lr-title" style="${t.column === "done" ? "text-decoration:line-through;color:var(--muted);" : ""}">${escapeHtml(t.title)}</div><div class="lr-sub">${escapeHtml(col.label)}</div></div>${due ? `<span class="card-due-badge${due.overdue ? " overdue" : ""}">${due.text}</span>` : ""}`;
+    row.addEventListener("click", () => { closeRecordModal(); openTaskViewModal(t.id); });
+    return row;
+  };
+  const taskSection = (tasks, prefill) => {
+    const ts = addSection("Tasks", "+ Add task", () => { closeRecordModal(); openTaskModal(null, prefill); });
+    if(!tasks.length) empty(ts, "No tasks yet.");
+    tasks.slice().sort((a, b) => (a.column === "done") - (b.column === "done") || String(a.dueDate || "9").localeCompare(String(b.dueDate || "9"))).forEach(t => ts.appendChild(taskRow(t)));
   };
 
   if(kind === "contact"){
     const c = contactById(id);
-    const list = addSection("Deals", "+ Add deal", () => openRecordModal("deal", null, { contactId:id, companyId:c.companyId || "", title:"" }));
+    const co = companyById(c.companyId);
+    const cl = addSection("Company");
+    if(co) cl.appendChild(companyRow(co));
+    else {
+      empty(cl, "Not linked to a company.");
+      if(canEditRecord("contact", c)) addPicker(cl, "Link to a company…", state.companies.map(x => opt(x.id, x.name)).sort(byName), v => linkRecords("contacts", c, { companyId:v }));
+    }
+    const dl = addSection("Deals", "+ Add deal", () => openRecordModal("deal", null, { contactId:id, companyId:c.companyId || "", title:"" }));
     const ds = state.deals.filter(d => d.contactId === id);
-    if(!ds.length) list.innerHTML = '<div class="empty-note">No deals with this contact yet.</div>';
-    ds.forEach(d => list.appendChild(miniDealRow(d)));
+    if(!ds.length) empty(dl, "No deals with this contact yet.");
+    ds.forEach(d => dl.appendChild(miniDealRow(d)));
+    addPicker(dl, "Link an existing deal…", editable("deal", state.deals.filter(d => d.contactId !== id)).map(d => opt(d.id, d.title)).sort(byName),
+      v => { const d = dealById(v); linkRecords("deals", d, { contactId:id, companyId: d.companyId || c.companyId || "" }); });
+    const dealIds = new Set(ds.map(d => d.id));
+    taskSection(state.board.filter(t => t.contactId === id || (t.dealId && dealIds.has(t.dealId))), { contactId:id });
+    if(co){
+      const others = state.contacts.filter(x => x.companyId === co.id && x.id !== id);
+      if(others.length){
+        const ol = addSection("Others at " + escapeHtml(co.name));
+        others.forEach(x => ol.appendChild(contactRow(x)));
+      }
+    }
   }
   if(kind === "company"){
     const cl = addSection("People", "+ Add contact", () => openRecordModal("contact", null, { companyId:id }));
     const cs = state.contacts.filter(c => c.companyId === id);
-    if(!cs.length) cl.innerHTML = '<div class="empty-note">No contacts at this company yet.</div>';
-    cs.forEach(c => {
-      const row = document.createElement("div");
-      row.className = "list-row";
-      row.tabIndex = 0;
-      row.innerHTML = `<div class="avatar avatar-sm">${escapeHtml(initials(contactName(c), c.email))}</div><div class="lr-main"><div class="lr-title">${escapeHtml(contactName(c))}</div><div class="lr-sub">${escapeHtml(c.title || c.email || "")}</div></div><span class="pill pill-${escapeHtml(c.status || "lead")}">${statusLabel(c.status)}</span>`;
-      row.addEventListener("click", () => openRecordModal("contact", c.id));
-      cl.appendChild(row);
-    });
+    if(!cs.length) empty(cl, "No contacts at this company yet.");
+    cs.forEach(c => cl.appendChild(contactRow(c)));
+    addPicker(cl, "Link an existing contact…", editable("contact", state.contacts.filter(c => c.companyId !== id)).map(c => opt(c.id, contactName(c))).sort(byName),
+      v => linkRecords("contacts", contactById(v), { companyId:id }));
     const dl = addSection("Deals", "+ Add deal", () => openRecordModal("deal", null, { companyId:id }));
     const ds = state.deals.filter(d => d.companyId === id);
-    if(!ds.length) dl.innerHTML = '<div class="empty-note">No deals with this company yet.</div>';
-    ds.forEach(d => dl.appendChild(miniDealRow(d)));
+    if(!ds.length) empty(dl, "No deals with this company yet.");
+    ds.forEach(d => {
+      const row = miniDealRow(d);
+      const ct = contactById(d.contactId);
+      if(ct) row.querySelector(".lr-sub").textContent += " · " + contactName(ct);
+      dl.appendChild(row);
+    });
+    addPicker(dl, "Link an existing deal…", editable("deal", state.deals.filter(d => d.companyId !== id)).map(d => opt(d.id, d.title)).sort(byName),
+      v => linkRecords("deals", dealById(v), { companyId:id }));
+    const contactIds = new Set(cs.map(c => c.id)), dealIds = new Set(ds.map(d => d.id));
+    taskSection(state.board.filter(t => (t.contactId && contactIds.has(t.contactId)) || (t.dealId && dealIds.has(t.dealId))), cs[0] ? { contactId:cs[0].id } : {});
   }
   if(kind === "deal"){
-    const ts = addSection("Tasks", "+ Add task", () => { closeRecordModal(); openTaskModal(null, { dealId:id }); });
-    const tasks = state.board.filter(t => t.dealId === id);
-    if(!tasks.length) ts.innerHTML = '<div class="empty-note">No tasks linked to this deal.</div>';
-    tasks.forEach(t => {
-      const row = document.createElement("div");
-      row.className = "list-row";
-      row.tabIndex = 0;
-      const due = formatDueBadge(t);
-      row.innerHTML = `<div class="lr-main"><div class="lr-title" style="${t.column === "done" ? "text-decoration:line-through;color:var(--muted);" : ""}">${escapeHtml(t.title)}</div><div class="lr-sub">${COLUMNS.find(c => c.id === t.column).label}</div></div>${due ? `<span class="card-due-badge${due.overdue ? " overdue" : ""}">${due.text}</span>` : ""}`;
-      row.addEventListener("click", () => { closeRecordModal(); openTaskModal(t.id); });
-      ts.appendChild(row);
-    });
+    const d = dealById(id);
+    const co = companyById(d.companyId), ct = contactById(d.contactId);
+    const mine = canEditRecord("deal", d);
+    const col = addSection("Company");
+    if(co) col.appendChild(companyRow(co));
+    else {
+      empty(col, "Not linked to a company.");
+      if(mine) addPicker(col, "Link to a company…", state.companies.map(x => opt(x.id, x.name)).sort(byName), v => linkRecords("deals", d, { companyId:v }));
+    }
+    const cl = addSection("Main contact");
+    if(ct) cl.appendChild(contactRow(ct, [ct.title, co && ct.companyId !== co.id && companyById(ct.companyId) ? companyById(ct.companyId).name : ""].filter(Boolean).join(" · ")));
+    else {
+      empty(cl, "No contact on this deal yet.");
+      // People at the deal's company first.
+      const people = state.contacts.slice().sort((a, b) => (b.companyId === d.companyId) - (a.companyId === d.companyId) || contactName(a).localeCompare(contactName(b)));
+      if(mine) addPicker(cl, "Link a contact…", people.map(x => opt(x.id, contactName(x) + (companyById(x.companyId) ? " · " + companyById(x.companyId).name : ""))),
+        v => { const x = contactById(v); linkRecords("deals", d, { contactId:v, companyId: d.companyId || (x && x.companyId) || "" }); });
+    }
+    taskSection(state.board.filter(t => t.dealId === id), { dealId:id });
+    if(co){
+      const others = state.deals.filter(x => x.companyId === co.id && x.id !== id);
+      if(others.length){
+        const ol = addSection("Other deals with " + escapeHtml(co.name));
+        others.forEach(x => ol.appendChild(miniDealRow(x)));
+      }
+    }
   }
 
   // Feature modules can add their own sections (e.g. connected mailboxes).
@@ -1799,8 +1908,9 @@ function openTaskViewModal(taskId){
   contactEl.classList.toggle("tv-empty", !lead);
   if(lead){
     const co = companyById(lead.companyId);
-    contactEl.innerHTML = `<button type="button" class="panel-link" data-always-enabled="true">${escapeHtml(contactName(lead))}</button>${co ? ` <span class="sub">· ${escapeHtml(co.name)}</span>` : ""}${lead.phone ? ` <span class="sub">· ${escapeHtml(lead.phone)}</span>` : ""}`;
+    contactEl.innerHTML = `<button type="button" class="panel-link" data-always-enabled="true">${escapeHtml(contactName(lead))}</button>${co ? ` <span class="sub">·</span> <button type="button" class="panel-link tv-company" data-always-enabled="true">${escapeHtml(co.name)}</button>` : ""}${lead.phone ? ` <span class="sub">· ${escapeHtml(lead.phone)}</span>` : ""}`;
     contactEl.querySelector("button").addEventListener("click", () => { closeTaskViewModal(); openRecordModal("contact", lead.id); });
+    if(co) contactEl.querySelector(".tv-company").addEventListener("click", () => { closeTaskViewModal(); openRecordModal("company", co.id); });
   } else {
     contactEl.textContent = "None";
   }
