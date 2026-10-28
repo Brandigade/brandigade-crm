@@ -16,6 +16,7 @@
 
 .tl-icon.t-email{background:var(--accent-soft);color:var(--accent);}
 .tl-icon.t-task{background:var(--surface-2);color:var(--ink);}
+.tl-icon.t-update{background:var(--neutral-soft);color:var(--muted);}
 .tl-item.clickable{cursor:pointer;}
 .tl-item.clickable:focus-visible{outline-offset:-2px;border-radius:8px;}
 .tl-item.clickable:hover .tl-title{color:var(--accent);}

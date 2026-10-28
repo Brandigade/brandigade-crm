@@ -1018,7 +1018,9 @@ function renderDashboard(){
 
   // Recent activity
   const actEl = document.getElementById("d-activity");
-  const recent = state.activities.slice().sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
+  // Small detail edits stay on the record's own timeline.
+  const recent = state.activities.filter(a => !(a.source === "record" && a.event === "updated"))
+    .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
   actEl.innerHTML = recent.length ? "" : '<div class="empty-note">Calls, emails and meetings you log on a contact or deal show up here.</div>';
   recent.forEach(a => actEl.appendChild(makeTimelineItem(a, true)));
 }

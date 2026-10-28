@@ -159,6 +159,7 @@ function createDemoClient(opts){
       r.phone_digits = r.phone ? String(r.phone).replace(/[^0-9]/g, "") || null : null;
       if(r.last_activity_at === undefined) r.last_activity_at = null;
     }
+    if(table === "companies" || table === "contacts" || table === "deals") r.created_by = r.created_by || user.id;
     if(table === "activities"){
       r.source = r.source || "manual";
       r.visibility = r.visibility || "team";
@@ -215,8 +216,35 @@ function createDemoClient(opts){
       task_id: op === "DELETE" ? null : t.id, meta: { task_id: t.id, status: t.status, due_date: t.due_date, assigned_to: t.assigned_to },
     }));
   }
+  // Same entries as the contacts/deals/companies_timeline triggers (20261028110000), minus the folding of quick edits.
+  const RECORD_FIELDS = {
+    contacts: ["first_name", "last_name", "email", "phone", "title", "company_id", "status", "owner_id", "source", "notes"],
+    deals: ["title", "company_id", "contact_id", "value", "stage", "owner_id", "close_date", "notes"],
+    companies: ["name", "industry", "website", "phone", "city", "notes"],
+  };
+  function recordEvents(table, op, oldRow, row){
+    const r = row || oldRow;
+    const kind = table === "contacts" ? "contact" : table === "deals" ? "deal" : "company";
+    const subject = kind === "contact" ? ([r.first_name, r.last_name].filter(Boolean).join(" ") || r.email || "Lead") : kind === "deal" ? r.title : r.name;
+    let company = kind === "company" ? r.id : r.company_id || null;
+    if(kind === "deal" && !company && r.contact_id){ const c = tableOf("contacts").find(x => x.id === r.contact_id); company = c ? c.company_id || null : null; }
+    const at = { contact: kind === "contact" ? r.id : kind === "deal" ? r.contact_id || null : null, deal: kind === "deal" && op !== "DELETE" ? r.id : null };
+    const add = (event, meta) => addActivity({
+      workspace_id: r.workspace_id, type:"update", source:"record", event, subject, occurred_at: nowIso(), actor_id: user.id,
+      contact_id: op === "DELETE" && kind === "contact" ? null : at.contact, company_id: company, deal_id: at.deal,
+      meta: Object.assign({ record_kind: kind, record_id: r.id }, meta || {}),
+    });
+    if(op === "INSERT") return add("created", kind === "deal" ? { stage: r.stage, value: r.value } : {});
+    if(op === "DELETE"){ if(kind !== "company" && (at.contact || company)) add("deleted", {}); return; }
+    const changed = RECORD_FIELDS[table].filter(f => JSON.stringify(oldRow[f] ?? null) !== JSON.stringify(row[f] ?? null));
+    const special = kind === "contact" ? { status:"status", owner_id:"owner", company_id:"company" } : kind === "deal" ? { stage:"stage", owner_id:"owner" } : {};
+    Object.keys(special).forEach(f => { if(changed.includes(f)) add(special[f], { from: oldRow[f] ?? null, to: row[f] ?? null, value: row.value }); });
+    const rest = changed.filter(f => !special[f]);
+    if(rest.length) add("updated", { fields: rest, value: row.value });
+  }
   function afterWrite(table, op, oldRow, row){
     if(table === "tasks") taskEvents(op, oldRow, row);
+    if(RECORD_FIELDS[table]) recordEvents(table, op, oldRow, row);
     if(table === "activities" && op !== "DELETE") touchContacts(row);
   }
 

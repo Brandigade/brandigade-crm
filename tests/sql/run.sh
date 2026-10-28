@@ -31,7 +31,7 @@ apply() {
 echo "== schema, security and timeline ($DB)"
 fresh "$DB"
 apply "$DB" "$MIG"/*.sql
-for t in rls_test.sql crm_rls_test.sql timeline_test.sql ownership_test.sql; do
+for t in rls_test.sql crm_rls_test.sql timeline_test.sql ownership_test.sql record_timeline_test.sql; do
   echo "-- $t"
   qf "$DB" "$t"
 done

@@ -12,6 +12,7 @@
      DialerUI.openDisposition(callId)                               js/dialer.js
 ============================================================ */
 const TASK_ICON = '<path d="M9 11l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="3"/>';
+const UPDATE_ICON = '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>';
 const LOCK_ICON = '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
 const TIMELINE_FILTERS = [
   { id:"all", label:"All", types:null },
@@ -19,7 +20,14 @@ const TIMELINE_FILTERS = [
   { id:"call", label:"Calls", types:["call"] },
   { id:"task", label:"Tasks", types:["task"] },
   { id:"note", label:"Notes & meetings", types:["note", "meeting"] },
+  { id:"update", label:"Changes", types:["update"] },
 ];
+// Field names in "details updated" entries (see migration 20261028110000_record_timeline.sql).
+const RECORD_FIELD_LABELS = {
+  first_name:"first name", last_name:"last name", email:"email", phone:"phone", title:"job title", source:"source",
+  notes:"notes", contact_id:"lead", company_id:"company", value:"value", close_date:"close date", name:"name",
+  industry:"industry", website:"website", city:"city",
+};
 const TIMELINE_PAGE = 30;
 const CALL_DISPOSITIONS = {
   connected:"Connected", left_voicemail:"Left voicemail", no_answer:"No answer", busy:"Busy",
@@ -229,6 +237,7 @@ const logActivityFromTimeline = guardEdit(function(){
 /* ---------- One timeline item ---------- */
 function activityIcon(type){
   if(type === "task") return TASK_ICON;
+  if(type === "update") return UPDATE_ICON;
   const t = ACTIVITY_TYPES.find(x => x.id === type) || ACTIVITY_TYPES[3];
   return t.icon;
 }
@@ -250,6 +259,33 @@ function taskEventTitle(a){
     case "rescheduled": return (m.due_date ? `Task due ${fmtDay(m.due_date)}${m.due_time ? " " + String(m.due_time).slice(0, 5) : ""}: ` : "Due date removed: ") + title;
     case "deleted": return "Task deleted: " + title;
     default: return title;
+  }
+}
+
+// "Lead created: Lea Haddad", "Deal moved from Proposal sent to Won: Rebrand"...
+function recordEventTitle(a){
+  const m = a.meta || {};
+  const kind = m.record_kind;
+  const noun = kind === "deal" ? "Deal" : kind === "company" ? "Company" : "Lead";
+  const name = a.subject || noun;
+  const stage = id => (STAGES.find(s => s.id === id) || {}).label || id || "none";
+  const status = id => (CONTACT_STATUSES.find(s => s.id === id) || {}).label || id || "none";
+  const company = id => { const c = id && companyById(id); return c ? c.name : (id ? "another company" : "no company"); };
+  switch(a.event){
+    case "created": return `${noun} created: ${name}`;
+    case "deleted": return `${noun} deleted: ${name}`;
+    case "status": return `Lead status changed from ${status(m.from)} to ${status(m.to)}: ${name}`;
+    case "stage":
+      if(m.to === "won") return `Deal won: ${name}`;
+      if(m.to === "lost") return `Deal lost: ${name}`;
+      return `Deal moved from ${stage(m.from)} to ${stage(m.to)}: ${name}`;
+    case "owner": return `${noun} ${m.to ? "given to " + (personName(m.to) || "a teammate") : "unassigned"}: ${name}`;
+    case "company": return m.to ? `Lead moved to ${company(m.to)}: ${name}` : `Lead removed from ${company(m.from)}: ${name}`;
+    case "updated": {
+      const fields = (Array.isArray(m.fields) ? m.fields : []).map(f => RECORD_FIELD_LABELS[f] || f);
+      return `${noun} updated${fields.length ? " (" + fields.join(", ") + ")" : ""}: ${name}`;
+    }
+    default: return name;
   }
 }
 
@@ -302,6 +338,12 @@ function renderActivityItem(a, opts){
        (!c.user_id || (currentUser && c.user_id === currentUser.id) || currentRole === "owner")){
       actions.push(["Add outcome", () => DialerUI.openDisposition(a.callId)]);
     }
+  } else if(a.source === "record"){
+    title = recordEventTitle(a);
+    if(who) parts.push("by " + who);
+    const m = a.meta || {};
+    if(m.record_kind === "deal" && m.value != null && (a.event === "created" || a.event === "stage")) badges += `<span class="tl-pill">${escapeHtml(fmtMoney(m.value))}</span>`;
+    body = "";
   } else if(a.source === "task"){
     title = taskEventTitle(a);
     if(who) parts.push("by " + who);
@@ -324,7 +366,7 @@ function renderActivityItem(a, opts){
   }
   if(a.visibility === "private") badges += `<span class="tl-pill tl-pill-private" title="Only you can see this"><svg viewBox="0 0 24 24" aria-hidden="true">${LOCK_ICON}</svg>Private</span>`;
 
-  const iconType = a.source === "task" ? "task" : a.type;
+  const iconType = a.source === "task" ? "task" : a.source === "record" ? "update" : a.type;
   item.innerHTML = `
     <div class="tl-icon t-${escapeHtml(iconType)}"><svg viewBox="0 0 24 24" aria-hidden="true">${activityIcon(iconType)}</svg></div>
     <div style="min-width:0;">
@@ -352,6 +394,10 @@ function renderActivityItem(a, opts){
     item.classList.add("clickable");
     item.tabIndex = 0;
     item.addEventListener("click", () => a.dealId && dealById(a.dealId) ? openRecordModal("deal", a.dealId) : (contactById(a.contactId) && openRecordModal("contact", a.contactId)));
+  } else if(opts.withContext && opts.openRecordOnClick !== false && a.companyId && companyById(a.companyId)){
+    item.classList.add("clickable");
+    item.tabIndex = 0;
+    item.addEventListener("click", () => openRecordModal("company", a.companyId));
   }
   return item;
 }
