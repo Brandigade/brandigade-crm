@@ -251,16 +251,29 @@
 
   <!-- RECORD MODAL (contact / company / deal) -->
   <div id="record-modal-overlay" class="modal-overlay hidden">
-    <div class="task-modal wide" role="dialog" aria-modal="true" aria-labelledby="rm-heading">
+    <div class="task-modal wide record-modal" role="dialog" aria-modal="true" aria-labelledby="rm-heading">
       <div class="task-modal-head">
-        <h3 id="rm-heading">New record</h3>
+        <div class="rm-identity">
+          <div class="rm-avatar hidden" id="rm-avatar" aria-hidden="true"></div>
+          <div class="rm-identity-text">
+            <h3 id="rm-heading">New record</h3>
+            <div class="rm-subtitle hidden" id="rm-subtitle"></div>
+          </div>
+        </div>
         <div class="rm-actions" id="rm-actions"></div>
         <button type="button" class="task-modal-close" id="rm-close" data-always-enabled="true" aria-label="Close">&times;</button>
       </div>
       <div class="task-modal-body">
+        <div class="rm-summary hidden" id="rm-summary"></div>
         <div class="rm-layout" id="rm-layout">
-          <form id="rm-form" autocomplete="off"></form>
-          <div class="rm-related" id="rm-related"></div>
+          <aside class="rm-side">
+            <section class="rm-card" id="rm-about">
+              <h4 class="rm-card-title" id="rm-about-title">Details</h4>
+              <form id="rm-form" autocomplete="off"></form>
+            </section>
+            <div class="rm-related" id="rm-related"></div>
+          </aside>
+          <div class="rm-main" id="rm-main"></div>
         </div>
       </div>
       <div class="task-modal-foot">

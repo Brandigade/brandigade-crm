@@ -101,7 +101,7 @@ function boot(html, { connected, user, url, store: givenStore } = {}) {
   const ct = w.eval("state.contacts[0]");
   ok(ct && ct.companyId === co.id && ct.ownerId === "u1", "contact saved with company and owner");
   ok(store.contacts[0].company_id === co.id && store.contacts[0].email_normalized === "rana@globex.co", "contact row has the company link and normalized email");
-  ok(!!d.querySelector("#rm-related .tl-filters") && d.querySelectorAll("#rm-related .tl-chip").length === 6, "record shows the unified timeline with type filters");
+  ok(!!d.querySelector("#rm-main .tl-filters") && d.querySelectorAll("#rm-main .tl-chip").length === 6, "record shows the unified timeline with type filters");
   ok(store.activities.some((a) => a.source === "record" && a.event === "created" && a.contact_id === ct.id && a.company_id === co.id), "creating a lead puts it on the lead's and company's timeline");
   d.getElementById("act-subject").value = "Intro call"; d.getElementById("act-type").value = "call"; d.getElementById("act-log-btn").click(); await sleep(600);
   ok(w.eval("state.activities.find(a => a.subject === 'Intro call').contactId") === ct.id, "activity logged in state");

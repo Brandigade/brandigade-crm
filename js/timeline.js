@@ -29,6 +29,11 @@ const RECORD_FIELD_LABELS = {
   industry:"industry", website:"website", city:"city",
 };
 const TIMELINE_PAGE = 30;
+const TIMELINE_INTRO = {
+  contact: "Emails, calls, tasks, notes and changes for this contact, newest first.",
+  company: "Everything for this company and its people and deals, newest first.",
+  deal: "Emails, calls, tasks, notes and changes for this deal, newest first.",
+};
 const CALL_DISPOSITIONS = {
   connected:"Connected", left_voicemail:"Left voicemail", no_answer:"No answer", busy:"Busy",
   wrong_number:"Wrong number", not_interested:"Not interested", callback_requested:"Call back", other:"Other",
@@ -45,6 +50,19 @@ function fmtDuration(sec){
   sec = Math.max(0, Math.round(Number(sec) || 0));
   const m = Math.floor(sec / 60), s = sec % 60;
   return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+}
+function localDayKey(iso){
+  const d = new Date(iso);
+  return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+}
+// "Today", "Yesterday", "Monday, Oct 26", "Mar 3, 2025"
+function timelineDayLabel(iso){
+  const d = new Date(iso), now = new Date();
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  if(days === 0) return "Today";
+  if(days === 1) return "Yesterday";
+  if(d.getFullYear() !== now.getFullYear()) return d.toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" });
+  return d.toLocaleDateString(undefined, { weekday: days > 0 && days < 7 ? "long" : undefined, month:"short", day:"numeric" });
 }
 function fmtDateTime(iso){
   if(!iso) return "";
@@ -80,20 +98,23 @@ function renderTimelineSection(box, kind, id){
   const sec = document.createElement("section");
   sec.className = "timeline-section";
   sec.innerHTML = `
-    <div class="panel-head" style="margin-bottom:6px;"><h4>Activity</h4><span class="panel-sub tl-live" title="Updates automatically">Live</span></div>
-    <div class="log-form" id="log-form">
+    <div class="tl-head">
+      <div><h4 class="tl-heading">Timeline</h4><div class="tl-sub">${escapeHtml(TIMELINE_INTRO[kind] || "")}</div></div>
+      <span class="panel-sub tl-live" title="Updates automatically">Live</span>
+    </div>
+    <div class="log-form collapsed" id="log-form">
       <div class="tm-row">
         <div class="tm-field" style="flex:0 0 120px;"><select id="act-type" aria-label="Activity type">${ACTIVITY_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join("")}</select></div>
-        <div class="tm-field"><input id="act-subject" type="text" maxlength="500" placeholder="What happened?" aria-label="Activity summary" /></div>
+        <div class="tm-field"><input id="act-subject" type="text" maxlength="500" placeholder="Add a note, call or meeting to the timeline…" aria-label="Activity summary" /></div>
       </div>
-      <div class="tm-field"><textarea id="act-body" maxlength="20000" placeholder="Details (optional)" aria-label="Activity details"></textarea></div>
+      <div class="tm-field log-form-body"><textarea id="act-body" maxlength="20000" placeholder="Details (optional)" aria-label="Activity details"></textarea></div>
       <div class="log-form-foot">
         <label class="tl-private-toggle"><input type="checkbox" id="act-private" /> Only visible to me</label>
-        <button type="button" class="btn btn-primary" id="act-log-btn">Log activity</button>
+        <button type="button" class="btn btn-primary" id="act-log-btn">Add to timeline</button>
       </div>
     </div>
-    <div class="tl-filters" role="tablist" aria-label="Filter activity"></div>
-    <div class="timeline" id="rm-timeline" aria-live="polite"></div>
+    <div class="tl-filters" role="tablist" aria-label="Filter the timeline"></div>
+    <div class="timeline tl-visual" id="rm-timeline" aria-live="polite"></div>
     <div class="tl-more-wrap"><button type="button" class="btn btn-ghost tl-more hidden" data-always-enabled="true">Show older activity</button></div>`;
   box.appendChild(sec);
 
@@ -116,6 +137,10 @@ function renderTimelineSection(box, kind, id){
     // Removing the form for a redraw isn't the person leaving it.
     setTimeout(() => { if(timelineView && timelineView.el === sec && !sec.contains(document.activeElement)) timelineView.focus = null; }, 0);
   });
+  // The form stays one line until someone starts writing in it.
+  const expand = () => logForm.classList.remove("collapsed");
+  logForm.addEventListener("focusin", expand);
+  if(prevForm && (prevForm.subject || prevForm.body || prevForm.focus)) expand();
   sec.querySelector("#act-log-btn").addEventListener("click", logActivityFromTimeline);
   sec.querySelector("#act-subject").addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); logActivityFromTimeline(); } });
   if(currentRole === "viewer") sec.querySelector("#log-form").classList.add("hidden");
@@ -192,14 +217,27 @@ function drawTimeline(){
   const more = view.el.querySelector(".tl-more");
   list.innerHTML = "";
   if(view.error && !view.items.length){
-    list.innerHTML = `<div class="tl-state tl-error">Couldn't load the activity: ${escapeHtml(view.error)} <button type="button" class="panel-link" data-always-enabled="true">Try again</button></div>`;
+    list.innerHTML = `<div class="tl-state tl-error">Couldn't load the timeline: ${escapeHtml(view.error)} <button type="button" class="panel-link" data-always-enabled="true">Try again</button></div>`;
     list.querySelector("button").addEventListener("click", () => loadTimeline(true));
   } else if(!view.items.length){
     list.innerHTML = view.loading
-      ? '<div class="tl-state">Loading activity…</div>'
-      : `<div class="empty-note">${view.filter === "all" ? "Nothing here yet. Emails, calls, tasks and notes for this record will appear here." : "No activity of this type yet."}</div>`;
+      ? '<div class="tl-state">Loading the timeline…</div>'
+      : `<div class="tl-empty">${view.filter === "all" ? "Nothing on the timeline yet. Emails, calls, tasks, notes and changes will appear here as they happen." : "Nothing of this type on the timeline yet."}</div>`;
   }
-  view.items.slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).forEach(a => list.appendChild(renderActivityItem(a, { withContext: view.kind !== "contact", openRecordOnClick: false })));
+  // One group per day, newest first, along a line.
+  let track = null, day = null;
+  view.items.slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).forEach(a => {
+    const key = localDayKey(a.at);
+    if(key !== day){
+      day = key;
+      const group = document.createElement("div");
+      group.className = "tl-day";
+      group.innerHTML = `<div class="tl-day-label">${escapeHtml(timelineDayLabel(a.at))}</div><div class="tl-track"></div>`;
+      list.appendChild(group);
+      track = group.querySelector(".tl-track");
+    }
+    track.appendChild(renderActivityItem(a, { withContext: view.kind !== "contact", openRecordOnClick: false, dayGrouped: true }));
+  });
   more.classList.toggle("hidden", view.done || !view.items.length);
   more.disabled = !!view.loading;
   more.textContent = view.loading && view.items.length ? "Loading…" : "Show older activity";
@@ -369,9 +407,9 @@ function renderActivityItem(a, opts){
   const iconType = a.source === "task" ? "task" : a.source === "record" ? "update" : a.type;
   item.innerHTML = `
     <div class="tl-icon t-${escapeHtml(iconType)}"><svg viewBox="0 0 24 24" aria-hidden="true">${activityIcon(iconType)}</svg></div>
-    <div style="min-width:0;">
+    <div class="tl-content">
       <div class="tl-title">${escapeHtml(title)}${badges}</div>
-      <div class="tl-meta"><span title="${escapeHtml(fmtDateTime(a.at))}">${relTime(a.at)}</span>${parts.length ? " · " + parts.map(escapeHtml).join(" · ") : ""}</div>
+      <div class="tl-meta"><span title="${escapeHtml(fmtDateTime(a.at))}">${opts.dayGrouped && localDayKey(a.at) !== localDayKey(new Date().toISOString()) ? escapeHtml(new Date(a.at).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" })) : relTime(a.at)}</span>${parts.length ? " · " + parts.map(escapeHtml).join(" · ") : ""}</div>
       ${body ? `<div class="tl-body">${escapeHtml(body)}</div>` : ""}
       <div class="tl-actions"></div>
       <div class="tl-extra"></div>

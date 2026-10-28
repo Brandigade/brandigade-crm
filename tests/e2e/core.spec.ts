@@ -26,13 +26,13 @@ test.describe("core CRM", () => {
     await page.locator("#rm-phone").fill("+1 415 555 0143");
     await page.locator("#rm-companyId").selectOption({ label: `${prefix} Acme` });
     await page.getByRole("button", { name: "Create contact" }).click();
-    await expect(page.locator("#rm-related .tl-filters")).toBeVisible();
+    await expect(page.locator("#rm-main .tl-filters")).toBeVisible();
 
     // A hand-logged call on the lead's timeline.
     await page.locator("#act-type").selectOption("call");
     await page.locator("#act-subject").fill(`${prefix} Discovery call`);
     await page.locator("#act-body").fill("Budget confirmed for Q4");
-    await page.getByRole("button", { name: "Log activity" }).click();
+    await page.getByRole("button", { name: "Add to timeline" }).click();
     await expect(page.locator("#rm-timeline .tl-item", { hasText: `${prefix} Discovery call` })).toBeVisible();
 
     // A deal from the lead record.
@@ -92,7 +92,7 @@ test.describe("core CRM", () => {
     // The owner opens the lead; the editor logs a note; it appears on the owner's open timeline.
     await owner.locator("#contacts-tbody tr", { hasText: `${prefix} Live` }).click();
     await editor.locator("#act-subject").fill(`${prefix} Live note`);
-    await editor.getByRole("button", { name: "Log activity" }).click();
+    await editor.getByRole("button", { name: "Add to timeline" }).click();
     await expect(owner.locator("#rm-timeline .tl-item", { hasText: `${prefix} Live note` })).toBeVisible({ timeout: 15_000 });
     await owner.context().close();
     await editor.context().close();
@@ -106,7 +106,7 @@ test.describe("core CRM", () => {
     await editor.getByRole("button", { name: "Create contact" }).click();
     await editor.locator("#act-subject").fill(`${prefix} Only mine`);
     await editor.locator("#act-private").check();
-    await editor.getByRole("button", { name: "Log activity" }).click();
+    await editor.getByRole("button", { name: "Add to timeline" }).click();
     await expect(editor.locator("#rm-timeline .tl-item", { hasText: `${prefix} Only mine` }).locator(".tl-pill-private")).toBeVisible();
     await expect.poll(async () => (await admin().from("activities").select("id").eq("subject", `${prefix} Only mine`)).data?.length).toBe(1);
 
@@ -133,7 +133,7 @@ test.describe("core CRM", () => {
     // Log one note, then start the next straight away.
     await page.locator("#act-type").selectOption("note");
     await page.locator("#act-subject").fill(`${prefix} First note`);
-    await page.getByRole("button", { name: "Log activity" }).click();
+    await page.getByRole("button", { name: "Add to timeline" }).click();
     await page.locator("#act-type").selectOption("note");
     await page.locator("#act-subject").fill(`${prefix} Half typed`);
     await page.locator("#act-private").check();

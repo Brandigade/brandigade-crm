@@ -1250,7 +1250,9 @@ function openRecordModal(kind, id, prefill){
   const def = RECORD_KINDS[kind];
   const record = id ? state[def.collection].find(r => r.id === id) : null;
   if(id && !record) return;
+  const sameRecord = openRecord.kind === kind && openRecord.id === (record ? record.id : null);
   openRecord = { kind, id: record ? record.id : null, prefill: prefill || null };
+  if(!sameRecord) document.querySelector("#record-modal-overlay .task-modal").scrollTop = 0;
   const values = record ? record : { ...def.defaults(), ...(prefill || {}) };
 
   document.getElementById("rm-heading").textContent = record ? def.title(record) : "New " + def.noun;
@@ -1270,6 +1272,8 @@ function openRecordModal(kind, id, prefill){
   }).join("")}</div>`).join("");
 
   document.getElementById("rm-layout").classList.toggle("single", !record);
+  document.getElementById("rm-about-title").textContent = record ? "Details" : "";
+  document.getElementById("rm-about-title").classList.toggle("hidden", !record);
   document.getElementById("rm-delete-btn").classList.toggle("hidden", !record);
   document.getElementById("rm-delete-btn").textContent = "Delete " + def.noun;
   document.getElementById("rm-save-btn").textContent = record ? "Save changes" : "Create " + def.noun;
@@ -1419,10 +1423,96 @@ function miniDealRow(d){
   return row;
 }
 
+// The record header: avatar, a line of context (job title and company...) and
+// the status or stage.
+function renderRecordHeader(kind, record){
+  const avatar = document.getElementById("rm-avatar");
+  const sub = document.getElementById("rm-subtitle");
+  avatar.classList.toggle("hidden", !record);
+  sub.classList.toggle("hidden", !record);
+  sub.innerHTML = "";
+  if(!record) return;
+  document.getElementById("rm-heading").textContent = RECORD_KINDS[kind].title(record);
+  avatar.className = "rm-avatar rm-avatar-" + kind;
+  avatar.textContent = kind === "contact" ? initials(contactName(record), record.email) : initials(RECORD_KINDS[kind].title(record));
+  const bits = [];
+  const link = (k, rec) => `<button type="button" class="rm-link" data-always-enabled="true" data-open-kind="${k}" data-open-id="${escapeHtml(rec.id)}">${escapeHtml(RECORD_KINDS[k].title(rec))}</button>`;
+  if(kind === "contact"){
+    const co = companyById(record.companyId);
+    bits.push(`<span class="pill pill-${escapeHtml(record.status || "lead")}">${statusLabel(record.status)}</span>`);
+    if(record.title && co) bits.push(`<span>${escapeHtml(record.title)} at ${link("company", co)}</span>`);
+    else if(record.title) bits.push(`<span>${escapeHtml(record.title)}</span>`);
+    else if(co) bits.push(link("company", co));
+  } else if(kind === "company"){
+    bits.push('<span class="pill pill-stage">Company</span>');
+    const where = [record.industry, record.city].filter(Boolean).map(escapeHtml).join(" · ");
+    if(where) bits.push(`<span>${where}</span>`);
+  } else if(kind === "deal"){
+    const st = stageById(record.stage);
+    bits.push(`<span class="pill rm-stage-pill" style="--stage-color:var(--stage-${escapeHtml(st.id)})">${escapeHtml(st.label)}</span>`);
+    const co = companyById(record.companyId), ct = contactById(record.contactId);
+    if(co) bits.push(link("company", co));
+    if(ct) bits.push(link("contact", ct));
+  }
+  sub.innerHTML = bits.join('<span class="rm-dot" aria-hidden="true">·</span>');
+  sub.querySelectorAll("[data-open-kind]").forEach(b => b.addEventListener("click", () => openRecordModal(b.dataset.openKind, b.dataset.openId)));
+}
+
+// Key facts at the top of a record, and a deal's progress through the stages.
+function renderRecordSummary(kind, record){
+  const box = document.getElementById("rm-summary");
+  box.innerHTML = "";
+  box.classList.toggle("hidden", !record);
+  if(!record) return;
+  const facts = [];
+  const fact = (label, html, empty) => facts.push(`<div class="rm-fact"><div class="rm-fact-label">${label}</div><div class="rm-fact-value${html ? "" : " is-empty"}">${html || empty || "Not set"}</div></div>`);
+  const openDeals = ds => ds.filter(d => OPEN_STAGES.includes(d.stage));
+  const dealsLine = ds => { const open = openDeals(ds); return open.length ? `${open.length} open · ${escapeHtml(fmtMoney(open.reduce((n, d) => n + (Number(d.value) || 0), 0)))}` : ""; };
+  const touch = id => { const c = contactById(id); const local = lastTouch(a => a.contactId === id); return [c && c.lastActivityAt, local].filter(Boolean).sort().pop() || null; };
+  if(kind === "contact"){
+    fact("Email", record.email ? `<a href="mailto:${escapeHtml(record.email)}">${escapeHtml(record.email)}</a>` : "");
+    fact("Phone", record.phone ? `<a href="tel:${escapeHtml(record.phone)}">${escapeHtml(record.phone)}</a>` : "");
+    fact("Owner", escapeHtml(personName(record.ownerId)), "Unassigned");
+    const t = touch(record.id);
+    fact("Last touch", t ? escapeHtml(relTime(t)) : "", "No contact yet");
+    fact("Deals", dealsLine(state.deals.filter(d => d.contactId === record.id)), "No open deals");
+  } else if(kind === "company"){
+    const site = String(record.website || "").trim();
+    const href = /^https?:\/\//i.test(site) ? site : "https://" + site;
+    fact("Website", site ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(site.replace(/^https?:\/\//i, ""))}</a>` : "");
+    fact("Phone", record.phone ? `<a href="tel:${escapeHtml(record.phone)}">${escapeHtml(record.phone)}</a>` : "");
+    const people = state.contacts.filter(c => c.companyId === record.id);
+    fact("People", people.length ? String(people.length) : "", "None yet");
+    const ds = state.deals.filter(d => d.companyId === record.id);
+    fact("Open deals", dealsLine(ds), "None");
+    const won = ds.filter(d => d.stage === "won").reduce((n, d) => n + (Number(d.value) || 0), 0);
+    fact("Won", won ? escapeHtml(fmtMoney(won)) : "", "Nothing yet");
+  } else if(kind === "deal"){
+    fact("Value", escapeHtml(fmtMoney(record.value)));
+    fact("Expected close", record.closeDate ? escapeHtml(fmtDay(record.closeDate)) : "");
+    fact("Owner", escapeHtml(personName(record.ownerId)), "Unassigned");
+    fact("Chance to win", escapeHtml(stageById(record.stage).prob + "%"));
+  }
+  let html = `<div class="rm-facts">${facts.join("")}</div>`;
+  if(kind === "deal"){
+    const path = STAGES.filter(s => s.id !== "lost");
+    const lost = record.stage === "lost";
+    const at = path.findIndex(s => s.id === record.stage);
+    html += `<ol class="rm-stages${lost ? " is-lost" : ""}" aria-label="Deal stage">${path.map((s, i) =>
+      `<li class="${!lost && i < at ? "done" : ""}${!lost && i === at ? " current" : ""}"${!lost && i === at ? ' aria-current="step"' : ""}>${escapeHtml(s.label)}</li>`).join("")}${lost ? '<li class="current lost" aria-current="step">Lost</li>' : ""}</ol>`;
+  }
+  box.innerHTML = html;
+}
+
 function renderRecordRelated(){
   const { kind, id } = openRecord;
   const box = document.getElementById("rm-related");
+  const main = document.getElementById("rm-main");
   box.innerHTML = "";
+  main.innerHTML = "";
+  const current = kind && id ? findRecord(RECORD_KINDS[kind].collection, id) : null;
+  renderRecordHeader(kind, current);
+  renderRecordSummary(kind, current);
   if(!kind || !id) return;
 
   const addSection = (title, actionLabel, onAction) => {
@@ -1475,9 +1565,9 @@ function renderRecordRelated(){
   // Feature modules can add their own sections (e.g. connected mailboxes).
   CRMHooks.emit("record:sections", kind, id, box);
 
-  // The unified activity timeline (js/timeline.js): emails, calls, tasks and
-  // notes in one list, with the form for logging an activity by hand.
-  renderTimelineSection(box, kind, id);
+  // The timeline (js/timeline.js): emails, calls, tasks, notes and changes in
+  // one list, with the form for logging an activity by hand.
+  renderTimelineSection(main, kind, id);
   applyRolePermissions();
 }
 
