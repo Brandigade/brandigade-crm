@@ -1,0 +1,44 @@
+# Actions -> Check emails -> Run workflow: shows the CRM's recent notification
+# emails (reminders, assignments, invites, test emails), whether each one was
+# sent, and the error if not. It reads the job queue and changes nothing.
+name: Check emails
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'wqdysxpormmxxaakfgtu' }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://wqdysxpormmxxaakfgtu.supabase.co' }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.113.0
+      - name: Recent notification emails
+        run: |
+          key="$(supabase projects api-keys --project-ref "$SUPABASE_PROJECT_REF" -o json | jq -r '.[] | select(.name == "service_role") | .api_key')"
+          if [ -z "$key" ]; then echo "::error::Couldn't read the project's service key with SUPABASE_ACCESS_TOKEN."; exit 1; fi
+          echo "::add-mask::$key"
+          get() { curl -fsS "$SUPABASE_URL/rest/v1/$1" -H "apikey: $key" -H "Authorization: Bearer $key"; }
+
+          echo "== Which features the server has switched on"
+          curl -fsS "$SUPABASE_URL/functions/v1/api/config" | jq '.features' || true
+
+          echo "== Email jobs by status (last 7 days)"
+          since="$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          get "job_queue?select=kind,status&created_at=gte.$since&kind=like.notify*&limit=1000" \
+            | jq -r 'group_by(.kind + " " + .status) | map("\(.[0].kind)  \(.[0].status)  x\(length)") | .[]'
+
+          echo "== Last 25 email jobs"
+          get "job_queue?select=id,kind,status,attempts,created_at,run_after,finished_at,last_error,result&kind=like.notify*&order=id.desc&limit=25" \
+            | jq -r '.[] | "#\(.id) \(.kind) \(.status) attempts=\(.attempts) created=\(.created_at) run_after=\(.run_after) finished=\(.finished_at)\n    error: \(.last_error // "-")\n    result: \(.result // {} | tostring | .[0:300])"'
+
+          echo "== Other jobs that failed recently"
+          get "job_queue?select=id,kind,status,last_error,updated_at&status=in.(dead,retry)&order=id.desc&limit=10" \
+            | jq -r '.[] | "#\(.id) \(.kind) \(.status) \(.updated_at)\n    error: \(.last_error // "-")"'
